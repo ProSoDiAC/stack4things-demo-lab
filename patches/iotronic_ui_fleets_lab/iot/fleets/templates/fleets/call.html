@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% block title %}{% trans "Call plugin on fleet" %}{% endblock %}
+
+{% block main %}
+    {% include 'iot/fleets/_call.html' %}
+{% endblock %}

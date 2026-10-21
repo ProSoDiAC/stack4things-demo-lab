@@ -1,0 +1,655 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}{% trans "Federated Learning" %}{% endblock %}
+
+{% block main %}
+
+<div class="panel panel-primary fl-lab-panel">
+  <div class="panel-heading clearfix">
+    <h3 class="panel-title pull-left" style="line-height: 34px;">
+      {% trans "Federated Learning" %}
+      {% if server_status.running %}
+        <span class="label label-success">{% trans "running" %} :{{ server_status.fl_port }}</span>
+      {% elif not server_status.control_reachable %}
+        <span class="label label-danger">{% trans "control offline" %}</span>
+      {% else %}
+        <span class="label label-default">{% trans "stopped" %}</span>
+      {% endif %}
+      {% if server_status.dashboard_running %}
+        <span class="label label-info">{% trans "dashboard live" %}</span>
+      {% endif %}
+    </h3>
+    <div class="pull-right">
+      <button type="button" class="btn btn-default btn-sm" data-toggle="modal" data-target="#fl-lab-params-modal">
+        {% trans "Parameters" %}
+      </button>
+    </div>
+  </div>
+  <div class="panel-body">
+    <form method="post" action="{% url 'horizon:iot:federated_learning:index' %}" class="fl-lab-run-form" id="fl-lab-run-form">
+      {% csrf_token %}
+      <input type="hidden" name="fl_action" id="fl-lab-action" value="">
+      <input type="hidden" name="fl_rounds" class="fl-cfg-sync" value="{{ global_config.fl_rounds }}">
+      <input type="hidden" name="server_host" class="fl-cfg-sync" value="{{ global_config.server_host }}">
+      <input type="hidden" name="server_port" class="fl-cfg-sync" value="{{ global_config.server_port }}">
+      <input type="hidden" name="dashboard_host" class="fl-cfg-sync" value="{{ global_config.dashboard_host }}">
+      <input type="hidden" name="dashboard_port" class="fl-cfg-sync" value="{{ global_config.dashboard_port }}">
+      <input type="hidden" name="apply_to_clients" class="fl-cfg-apply-sync" value="1">
+      <div id="fl-lab-sync-fields" aria-hidden="true"></div>
+      <div class="row">
+        <div class="col-md-6">
+          <div class="form-group" style="margin-bottom: 8px;">
+            <label for="fl-lab-plugin-select"><strong>{% trans "Select plugin" %}</strong></label>
+            <select id="fl-lab-plugin-select" name="fl_lab_plugin" class="form-control fl-lab-plugin-sync" style="max-width: 520px;">
+              <option value="fl-client-heart"
+                {% if selected_lab_plugin == 'fl-client-heart' %}selected{% endif %}>
+                fl-client-heart - {% trans "Heart disease classification" %}
+              </option>
+              <option value="fl-client-pm"
+                {% if selected_lab_plugin == 'fl-client-pm' %}selected{% endif %}>
+                fl-client-pm - {% trans "Predictive maintenance" %}
+              </option>
+            </select>
+            <p class="help-block" style="margin-bottom: 0;">
+              {% trans "Choosing a plugin updates the Flower scenario and board parameters. Click Start server to run (or restart) on alpha, beta and gamma." %}
+            </p>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="form-group" style="margin-bottom: 8px;">
+            <label>{% trans "Flower server scenario" %}</label>
+            <p class="form-control-static" id="fl-scenario-label" style="font-size: 15px; margin: 0;">
+              <strong>{{ active_scenario_label }}</strong>
+              <span class="text-muted">({{ active_scenario }})</span>
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="btn-toolbar" style="margin-top: 4px;">
+        <button type="button" class="btn btn-success fl-run-lab-btn" data-fl-action="run_lab_plugin">
+          {% trans "Start server" %}
+        </button>
+        {% if server_status.running %}
+        <button type="button" class="btn btn-warning fl-stop-server-btn" data-fl-action="stop_fl_server">
+          {% trans "Stop server" %}
+        </button>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal fade" id="fl-lab-params-modal" tabindex="-1" role="dialog"
+     aria-labelledby="fl-lab-params-title">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <div class="fl-lab-params-form">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+          </button>
+          <h4 class="modal-title" id="fl-lab-params-title">{% trans "Parameters" %}</h4>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>{% trans "FL rounds" %}</label>
+            <input type="text" name="fl_rounds" class="form-control fl-cfg-modal" value="{{ global_config.fl_rounds }}">
+          </div>
+          <div class="form-group">
+            <label>{% trans "Flower server host" %}</label>
+            <input type="text" name="server_host" class="form-control fl-cfg-modal" value="{{ global_config.server_host }}">
+          </div>
+          <div class="form-group">
+            <label>{% trans "Flower server port" %}</label>
+            <input type="text" name="server_port" class="form-control fl-cfg-modal" value="{{ global_config.server_port }}">
+          </div>
+          <div class="form-group">
+            <label>{% trans "Live dashboard host" %}</label>
+            <input type="text" name="dashboard_host" class="form-control fl-cfg-modal" value="{{ global_config.dashboard_host }}">
+          </div>
+          <div class="form-group">
+            <label>{% trans "Live dashboard port" %}</label>
+            <input type="text" name="dashboard_port" class="form-control fl-cfg-modal" value="{{ global_config.dashboard_port }}">
+          </div>
+          <div class="checkbox">
+            <label>
+              <input type="checkbox" name="apply_to_clients" value="1" class="fl-cfg-apply-modal" checked>
+              {% trans "Apply to all board start parameters" %}
+            </label>
+          </div>
+          <p class="help-block text-muted" style="margin-bottom:0;">
+            {% trans "Save applies immediately; if the Flower server is running it restarts with the new rounds and ports." %}
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-default" data-dismiss="modal">{% trans "Close" %}</button>
+          <button type="button" class="btn btn-primary" id="fl-params-save-btn">
+            {% trans "Save" %}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="panel panel-default">
+  <div class="panel-heading fl-collapsible-heading" role="button" data-toggle="collapse"
+       data-target="#fl-plugin-collapse" aria-expanded="false">
+    <h3 class="panel-title">
+      <span class="fa fa-chevron-right fl-chevron"></span>
+      {% trans "FL client plugin (async)" %}
+      {% if plugins_exist %}
+        <span class="label label-success pull-right" title="{% trans 'fl-client-heart and fl-client-pm exist in the cloud catalog' %}">
+          {% trans "plugins registered" %}
+        </span>
+      {% else %}
+        <span class="label label-warning pull-right">{% trans "plugins missing" %}</span>
+      {% endif %}
+      {% if total_clients %}
+        <span class="label {% if all_injected %}label-success{% elif injected_count %}label-info{% else %}label-default{% endif %} pull-right" style="margin-right: 6px;">
+          {{ injected_count }}/{{ total_clients }} {% trans "injected" %}
+        </span>
+      {% endif %}
+    </h3>
+  </div>
+  <div id="fl-plugin-collapse" class="panel-collapse collapse">
+    <div class="panel-body">
+      <div class="form-group" style="margin-bottom:0;">
+        <label for="fl-plugin-code">
+          {% trans "Plugin source" %}
+          <span id="fl-plugin-code-name" class="text-muted">{{ selected_lab_plugin|default:"fl-client-heart" }}</span>
+        </label>
+        <textarea id="fl-plugin-code" class="form-control fl-plugin-code-view" rows="12" readonly
+                  style="font-family: monospace; font-size: 12px; background: #f9f9f9;">{{ plugin_display_code }}</textarea>
+        <p class="help-block" style="margin:8px 0 0;">
+          {% trans "Plugin is selected at the top. Edit source in IoT -> Plugins." %}
+        </p>
+      </div>
+      {% if plugins_exist %}
+      <form method="post" action="{% url 'horizon:iot:federated_learning:index' %}" style="margin-top:12px;">
+        {% csrf_token %}
+        <input type="hidden" name="fl_lab_plugin" class="fl-lab-plugin-sync" value="{{ selected_lab_plugin|default:'fl-client-heart' }}">
+        <button type="submit" name="fl_action" value="inject_all" class="btn btn-info fl-inject-all-btn">
+          {% trans "Inject on all boards" %}
+        </button>
+        <p class="help-block" style="margin:8px 0 0;">
+          {% trans "Injects fl-client-heart and fl-client-pm on alpha, beta and gamma." %}
+        </p>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="panel panel-default">
+  <div class="panel-heading clearfix">
+    <h3 class="panel-title pull-left">{% trans "Edge FL clients" %}</h3>
+    {% if total_clients %}
+    <span class="label {% if all_injected %}label-success{% elif injected_count %}label-info{% else %}label-default{% endif %} pull-right" style="margin-top: 2px;">
+      {{ injected_count }}/{{ total_clients }} {% trans "injected" %}
+    </span>
+    {% endif %}
+  </div>
+  <div class="panel-body">
+    <form method="post" action="{% url 'horizon:iot:federated_learning:index' %}" class="fl-clients-form">
+      {% csrf_token %}
+      <input type="hidden" name="fl_lab_plugin" class="fl-lab-plugin-sync" value="{{ selected_lab_plugin|default:'fl-client-heart' }}">
+      <input type="hidden" name="fl_rounds" class="fl-cfg-sync" value="{{ global_config.fl_rounds }}">
+      <input type="hidden" name="server_host" class="fl-cfg-sync" value="{{ global_config.server_host }}">
+      <input type="hidden" name="server_port" class="fl-cfg-sync" value="{{ global_config.server_port }}">
+      <input type="hidden" name="dashboard_host" class="fl-cfg-sync" value="{{ global_config.dashboard_host }}">
+      <input type="hidden" name="dashboard_port" class="fl-cfg-sync" value="{{ global_config.dashboard_port }}">
+      <input type="hidden" name="apply_to_clients" class="fl-cfg-apply-sync" value="1">
+      <div class="table-responsive">
+        <table class="table table-striped table-bordered fl-client-table">
+          <thead>
+            <tr>
+              <th>{% trans "Edge board" %}</th>
+              <th>{% trans "Cloud plugin" %}</th>
+              <th>{% trans "Status" %}</th>
+              <th>{% trans "Start parameters (JSON)" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for client in clients %}
+            <tr>
+              <td>
+                <strong>{{ client.board_name }}</strong>
+                <input type="hidden" name="board_id_{{ client.slug }}" value="{{ client.board_id }}">
+                <input type="hidden" name="board_name_{{ client.slug }}" value="{{ client.board_name }}">
+              </td>
+              <td>
+                <strong class="fl-plugin-name-display">{{ client.plugin_name }}</strong>
+                <input type="hidden" name="plugin_id_{{ client.slug }}" class="fl-plugin-id-sync" value="{{ client.plugin_id }}">
+                <input type="hidden" name="plugin_name_{{ client.slug }}"
+                       id="plugin_name_{{ client.slug }}" class="fl-plugin-name-sync" value="{{ client.plugin_name }}">
+              </td>
+              <td>
+                <span class="label label-{{ client.status_class }}">{{ client.board_status }}</span>
+                {% if client.injected %}
+                  <span class="label label-success">{% trans "injected" %}</span>
+                {% elif client.plugin_id %}
+                  <span class="label label-warning">{% trans "pending" %}</span>
+                {% endif %}
+              </td>
+              <td>
+                <textarea name="parameters_{{ client.slug }}"
+                          class="form-control input-sm fl-board-params" rows="4"
+                          data-params-ready="{% if client.params_ready %}1{% else %}0{% endif %}"
+                          style="font-family: monospace; font-size: 11px;">{{ client.params_json }}</textarea>
+                {% if not client.params_ready %}
+                <p class="help-block text-muted" style="margin:4px 0 0;">
+                  {% trans "Board not online or dataset missing - fill JSON after onboarding." %}
+                </p>
+                {% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="4" class="text-muted">{% trans "No boards found - register and bring boards online first." %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="btn-toolbar">
+        <button type="submit" name="fl_action" value="save_assignments" class="btn btn-default">
+          {% trans "Save mapping" %}
+        </button>
+        <button type="submit" name="fl_action" value="inject_selected" class="btn btn-info fl-inject-selected-btn">
+          {% trans "Inject plugins" %}
+        </button>
+        <button type="submit" name="fl_action" value="start_all_clients" class="btn btn-success">
+          {% trans "Start all clients" %}
+        </button>
+        <button type="submit" name="fl_action" value="stop_all_clients" class="btn btn-warning">
+          {% trans "Stop all" %}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script type="application/json" id="fl-lab-plugin-codes-json">{{ fl_lab_plugin_codes_json|safe }}</script>
+<script>
+(function() {
+  var cfgFields = ['fl_rounds', 'server_host', 'server_port', 'dashboard_host', 'dashboard_port'];
+  var LS_KEY = 'fl_lab_params_v1';
+  var FL_LAB_PLUGIN_CODES = {};
+  try {
+    var codesEl = document.getElementById('fl-lab-plugin-codes-json');
+    if (codesEl && codesEl.textContent) {
+      FL_LAB_PLUGIN_CODES = JSON.parse(codesEl.textContent);
+    }
+  } catch (e) {
+    FL_LAB_PLUGIN_CODES = {};
+  }
+  var FL_LAB_PLUGIN_IDS = {
+    {% for name, uuid in fl_lab_plugin_ids.items %}
+    "{{ name|escapejs }}": "{{ uuid|escapejs }}"{% if not forloop.last %},{% endif %}
+    {% endfor %}
+  };
+  var PLUGIN_SCENARIO = {
+    'fl-client-heart': {
+      scenario: 'heart',
+      label: '{% trans "Heart disease classification" %}',
+      csv: {
+        'board-alpha': '/opt/fl/heart_1.csv',
+        'board-beta': '/opt/fl/heart_2.csv',
+        'board-gamma': '/opt/fl/heart_3.csv'
+      }
+    },
+    'fl-client-pm': {
+      scenario: 'pm',
+      label: '{% trans "Predictive maintenance" %}',
+      csv: {
+        'board-alpha': '/opt/fl/machine_1.csv',
+        'board-beta': '/opt/fl/machine_2.csv',
+        'board-gamma': '/opt/fl/machine_3.csv'
+      }
+    },
+    'fl-client': {
+      scenario: 'heart',
+      label: '{% trans "Heart disease classification" %}',
+      csv: {
+        'board-alpha': '/opt/fl/heart_1.csv',
+        'board-beta': '/opt/fl/heart_2.csv',
+        'board-gamma': '/opt/fl/heart_3.csv'
+      }
+    }
+  };
+
+  function updateScenarioLabel(pluginName) {
+    var meta = PLUGIN_SCENARIO[pluginName] || PLUGIN_SCENARIO['fl-client-heart'];
+    var el = document.getElementById('fl-scenario-label');
+    if (el) {
+      el.innerHTML = '<strong>' + meta.label + '</strong> <span class="text-muted">(' + meta.scenario + ')</span>';
+    }
+  }
+
+  var labSubmitting = false;
+
+  function submitLabForm(action) {
+    var form = document.getElementById('fl-lab-run-form');
+    var actionField = document.getElementById('fl-lab-action');
+    if (!form || !actionField || labSubmitting) return;
+    labSubmitting = true;
+    syncLabParamsToForms();
+    writeLabParamsStorage();
+    var labSelect = document.getElementById('fl-lab-plugin-select');
+    if (labSelect) {
+      applyLabPluginToAll(labSelect.value);
+    }
+    syncLabRunFormFromClients();
+    actionField.value = action || 'run_lab_plugin';
+    form.submit();
+  }
+
+  function updatePluginCodeDisplay(pluginName) {
+    if (!pluginName) return;
+    var ta = document.getElementById('fl-plugin-code');
+    var badge = document.getElementById('fl-plugin-code-name');
+    var code = FL_LAB_PLUGIN_CODES[pluginName];
+    if (ta) {
+      if (typeof code === 'string' && code.length) {
+        ta.value = code;
+      } else if (!ta.value) {
+        ta.value = '';
+      }
+      ta.scrollTop = 0;
+      ta.classList.remove('fl-plugin-code-updated');
+      void ta.offsetWidth;
+      ta.classList.add('fl-plugin-code-updated');
+    }
+    if (badge) {
+      badge.textContent = pluginName;
+    }
+  }
+
+  window.applyLabPluginToAll = function(pluginName) {
+    if (!pluginName) return;
+    var pluginUuid = FL_LAB_PLUGIN_IDS[pluginName] || '';
+    document.querySelectorAll('.fl-plugin-id-sync').forEach(function(el) {
+      if (pluginUuid) el.value = pluginUuid;
+    });
+    document.querySelectorAll('.fl-plugin-name-sync').forEach(function(el) {
+      el.value = pluginName;
+    });
+    document.querySelectorAll('.fl-plugin-name-display').forEach(function(el) {
+      el.textContent = pluginName;
+    });
+    document.querySelectorAll('.fl-lab-plugin-sync').forEach(function(el) {
+      el.value = pluginName;
+    });
+    var meta = PLUGIN_SCENARIO[pluginName];
+    if (meta) {
+      document.querySelectorAll('.fl-board-params').forEach(function(ta) {
+        if (ta.getAttribute('data-params-ready') !== '1') return;
+        var m = ta.name.match(/^parameters_(.+)$/);
+        if (!m) return;
+        var slug = m[1];
+        var boardInput = document.querySelector('input[name="board_name_' + slug + '"]');
+        var board = boardInput ? boardInput.value : '';
+        applyPluginToRow(pluginName, board, slug);
+      });
+    }
+    syncLabPluginPickers(pluginName);
+    syncLabParamsToClientJson();
+    updatePluginCodeDisplay(pluginName);
+    updateScenarioLabel(pluginName);
+  };
+
+  function applyPluginToRow(pluginName, board, slug) {
+    var meta = PLUGIN_SCENARIO[pluginName];
+    if (!meta || !board || !slug) return;
+    var csv = meta.csv[board];
+    if (!csv) return;
+    var ta = document.querySelector('textarea[name="parameters_' + slug + '"]');
+    if (!ta || ta.getAttribute('data-params-ready') !== '1') return;
+    try {
+      var obj = JSON.parse(ta.value);
+      if (typeof obj !== 'object' || obj === null) obj = {};
+      obj.fl_scenario = meta.scenario;
+      obj.csv_file = csv;
+      obj.board_name = board;
+      ta.value = JSON.stringify(obj, null, 2);
+    } catch (e) {
+      ta.value = JSON.stringify({
+        board_name: board,
+        fl_scenario: meta.scenario,
+        csv_file: csv
+      }, null, 2);
+    }
+  }
+
+  function readLabParamsStorage() {
+    try {
+      var raw = localStorage.getItem(LS_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function writeLabParamsStorage() {
+    var data = {};
+    cfgFields.forEach(function(name) {
+      var modal = document.querySelector('.fl-cfg-modal[name="' + name + '"]');
+      if (modal) data[name] = modal.value;
+    });
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(data));
+    } catch (e) {}
+  }
+
+  function syncLabParamsToClientJson() {
+    var applyModal = document.querySelector('.fl-cfg-apply-modal');
+    if (applyModal && !applyModal.checked) {
+      return;
+    }
+    var sh = document.querySelector('.fl-cfg-modal[name="server_host"]');
+    var sp = document.querySelector('.fl-cfg-modal[name="server_port"]');
+    var dh = document.querySelector('.fl-cfg-modal[name="dashboard_host"]');
+    var dp = document.querySelector('.fl-cfg-modal[name="dashboard_port"]');
+    if (!sh || !sp || !dh || !dp) {
+      return;
+    }
+    var serverAddress = sh.value.trim() + ':' + sp.value.trim();
+    var dashboardUrl = 'http://' + dh.value.trim() + ':' + dp.value.trim();
+    document.querySelectorAll('.fl-board-params').forEach(function(ta) {
+      if (ta.getAttribute('data-params-ready') !== '1') {
+        return;
+      }
+      try {
+        var obj = JSON.parse(ta.value);
+        if (typeof obj !== 'object' || obj === null) {
+          obj = {};
+        }
+        obj.server_address = serverAddress;
+        obj.dashboard_url = dashboardUrl;
+        ta.value = JSON.stringify(obj, null, 2);
+      } catch (e) {
+        /* keep invalid JSON as typed */
+      }
+    });
+  }
+
+  function syncLabParamsToForms() {
+    cfgFields.forEach(function(name) {
+      var modal = document.querySelector('.fl-cfg-modal[name="' + name + '"]');
+      if (!modal) return;
+      var val = modal.value;
+      document.querySelectorAll('.fl-cfg-sync[name="' + name + '"]').forEach(function(el) {
+        el.value = val;
+      });
+    });
+    var applyModal = document.querySelector('.fl-cfg-apply-modal');
+    if (applyModal) {
+      var applyVal = applyModal.checked ? '1' : '0';
+      document.querySelectorAll('.fl-cfg-apply-sync').forEach(function(el) {
+        el.value = applyVal;
+      });
+    }
+    syncLabParamsToClientJson();
+  }
+
+  document.querySelectorAll('.fl-cfg-modal, .fl-cfg-apply-modal').forEach(function(el) {
+    el.addEventListener('change', function() {
+      syncLabParamsToForms();
+      writeLabParamsStorage();
+    });
+    el.addEventListener('input', function() {
+      syncLabParamsToForms();
+      writeLabParamsStorage();
+    });
+  });
+
+  function syncLabPluginPickers(pluginName) {
+    var labSelect = document.getElementById('fl-lab-plugin-select');
+    if (labSelect && pluginName && labSelect.value !== pluginName) {
+      labSelect.value = pluginName;
+    }
+    document.querySelectorAll('.fl-lab-plugin-sync').forEach(function(el) {
+      el.value = pluginName || (labSelect ? labSelect.value : '');
+    });
+  }
+
+  function syncLabRunFormFromClients() {
+    var labForm = document.getElementById('fl-lab-run-form');
+    var clientsForm = document.querySelector('.fl-clients-form');
+    if (!labForm || !clientsForm) return;
+    syncLabParamsToForms();
+    var syncHost = document.getElementById('fl-lab-sync-fields');
+    if (syncHost) syncHost.innerHTML = '';
+    clientsForm.querySelectorAll('input[name^="board_id_"], input[name^="board_name_"], input[name^="plugin_id_"], input[name^="plugin_name_"], textarea[name^="parameters_"]').forEach(function(el) {
+      if (!el.name || el.disabled) return;
+      var clone = document.createElement('input');
+      clone.type = 'hidden';
+      clone.name = el.name;
+      clone.value = el.value;
+      if (syncHost) {
+        syncHost.appendChild(clone);
+      } else {
+        labForm.appendChild(clone);
+      }
+    });
+  }
+
+  document.querySelectorAll('form').forEach(function(form) {
+    form.addEventListener('submit', function() {
+      syncLabParamsToForms();
+      writeLabParamsStorage();
+      var labSelect = document.getElementById('fl-lab-plugin-select');
+      if (labSelect) {
+        applyLabPluginToAll(labSelect.value);
+      }
+      if (form.id === 'fl-lab-run-form') {
+        syncLabRunFormFromClients();
+      }
+    });
+  });
+
+  var labModal = document.getElementById('fl-lab-params-modal');
+  var paramsSaveBtn = document.getElementById('fl-params-save-btn');
+  if (paramsSaveBtn) {
+    paramsSaveBtn.addEventListener('click', function() {
+      syncLabParamsToForms();
+      writeLabParamsStorage();
+      submitLabForm('save_global_config');
+      if (window.jQuery && labModal) {
+        window.jQuery(labModal).modal('hide');
+      }
+    });
+  }
+  if (labModal) {
+    labModal.addEventListener('shown.bs.modal', function() {
+      var data = readLabParamsStorage();
+      if (!data) {
+        syncLabParamsToForms();
+        return;
+      }
+      cfgFields.forEach(function(name) {
+        if (!data[name]) return;
+        var modal = document.querySelector('.fl-cfg-modal[name="' + name + '"]');
+        if (modal) modal.value = data[name];
+      });
+      syncLabParamsToForms();
+    });
+  }
+
+  var labRunForm = document.getElementById('fl-lab-run-form');
+  if (labRunForm) {
+    labRunForm.querySelectorAll('[data-fl-action]').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        submitLabForm(btn.getAttribute('data-fl-action') || 'run_lab_plugin');
+      });
+    });
+  }
+
+  var labPluginSelect = document.getElementById('fl-lab-plugin-select');
+  var lastLabPlugin = '';
+  if (labPluginSelect) {
+    lastLabPlugin = labPluginSelect.value;
+    labPluginSelect.addEventListener('change', function() {
+      if (labPluginSelect.value === lastLabPlugin) return;
+      lastLabPlugin = labPluginSelect.value;
+      // Update UI/params only - do not auto-submit. Start server is explicit.
+      updatePluginCodeDisplay(labPluginSelect.value);
+      applyLabPluginToAll(labPluginSelect.value);
+    });
+    updatePluginCodeDisplay(labPluginSelect.value);
+    applyLabPluginToAll(labPluginSelect.value);
+  }
+
+  var pluginCollapse = document.getElementById('fl-plugin-collapse');
+  if (pluginCollapse) {
+    pluginCollapse.addEventListener('show.bs.collapse', function() {
+      var chev = document.querySelector('.fl-collapsible-heading .fl-chevron');
+      if (chev) {
+        chev.classList.remove('fa-chevron-right');
+        chev.classList.add('fa-chevron-down');
+      }
+    });
+    pluginCollapse.addEventListener('hide.bs.collapse', function() {
+      var chev = document.querySelector('.fl-collapsible-heading .fl-chevron');
+      if (chev) {
+        chev.classList.remove('fa-chevron-down');
+        chev.classList.add('fa-chevron-right');
+      }
+    });
+  }
+})();
+</script>
+
+<div class="panel panel-default fl-live-panel">
+  <div class="panel-heading">
+    <h3 class="panel-title">{% trans "Live topology" %}</h3>
+  </div>
+  <div class="panel-body fl-live-body">
+    <iframe id="fl-live-frame"
+            src="{{ fl_dashboard_url }}"
+            title="{% trans 'Federated Learning live dashboard' %}"
+            frameborder="0"></iframe>
+  </div>
+</div>
+
+<style>
+  .fl-live-panel { margin-bottom: 0; }
+  .fl-live-body { padding: 0; background: #0b1220; }
+  .fl-client-table textarea { min-width: 220px; }
+  .fl-plugin-code-view.fl-plugin-code-updated {
+    box-shadow: inset 0 0 0 2px #5bc0de;
+    transition: box-shadow 0.25s ease;
+  }
+  .btn-toolbar { margin-top: 12px; }
+  .fl-collapsible-heading { cursor: pointer; }
+  .fl-collapsible-heading .fl-chevron { margin-right: 6px; font-size: 12px; }
+  #fl-live-frame {
+    display: block;
+    width: 100%;
+    min-height: 480px;
+    border: 0;
+  }
+</style>
+{% endblock %}

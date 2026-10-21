@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S4T - Federated Learning Live</title>
+  {% if embed %}
+  <base href="/horizon/fl-live/">
+  <link rel="stylesheet" href="static/fl-viz.css">
+  {% else %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='fl-viz.css') }}">
+  {% endif %}
+</head>
+<body{% if embed %} class="embed"{% endif %}>
+{% if embed %}
+  <div class="embed-meta">
+    <div class="embed-meta-left">
+      <div class="round-badge">Round <span id="roundNum">0</span> / <span id="totalRounds">2</span></div>
+    </div>
+    <div class="embed-meta-center">
+      <div class="phase-pill" id="phaseLabel">Idle</div>
+    </div>
+    <div class="embed-meta-right">
+      <div class="scenario-pill" id="scenarioPill">-</div>
+    </div>
+  </div>
+  <main class="layout layout-embed">
+    <section class="viz-panel">
+      <div class="topology-wrap">
+        {% include "topology.svg.inc" %}
+      </div>
+      <div class="legend">
+        <span><i class="dot broadcast"></i> Broadcast weights</span>
+        <span><i class="dot train"></i> Local training</span>
+        <span><i class="dot upload"></i> Upload &Delta;weights</span>
+        <span><i class="dot agg"></i> FedAvg on cloud</span>
+      </div>
+    </section>
+    <aside class="side-panel">
+      <div class="card">
+        <h2 id="metricTitle">Global model</h2>
+        <div class="chart-wrap">
+          <canvas id="accChart" width="320" height="168"></canvas>
+        </div>
+        <div class="chart-legend">
+          <span><i class="chart-line acc"></i> accuracy (left)</span>
+          <span><i class="chart-line loss"></i> loss (right)</span>
+        </div>
+        <div class="metric-row">
+          <div><span class="metric-val" id="lastAcc">-</span><span class="metric-lbl" id="metricLabel">accuracy</span></div>
+          <div><span class="metric-val metric-val-loss" id="lastLoss">-</span><span class="metric-lbl">loss</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Event stream</h2>
+        <ul id="eventLog" class="event-log"></ul>
+      </div>
+    </aside>
+  </main>
+{% else %}
+  <div class="live-zoom-shell" id="live-zoom-shell">
+    <div class="topology-zoom-controls" aria-label="Zoom controls">
+      <button type="button" id="zoom-in" title="Zoom in">+</button>
+      <button type="button" id="zoom-out" title="Zoom out">-</button>
+      <button type="button" id="zoom-reset" title="Reset zoom">&#8634;</button>
+    </div>
+    <div class="live-zoom-viewport" id="live-zoom-viewport">
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">S4T</span>
+      <div>
+        <h1>Federated Learning - Live Topology</h1>
+        <p class="subtitle" id="scenarioSubtitle">Waiting for FL run</p>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="round-badge">Round <span id="roundNum">0</span> / <span id="totalRounds">2</span></div>
+      <div class="phase-pill" id="phaseLabel">Idle</div>
+    </div>
+  </header>
+  <main class="layout">
+    <section class="viz-panel">
+      <div class="topology-wrap">
+        {% include "topology.svg.inc" %}
+      </div>
+      <div class="legend">
+        <span><i class="dot broadcast"></i> Broadcast weights</span>
+        <span><i class="dot train"></i> Local training</span>
+        <span><i class="dot upload"></i> Upload &Delta;weights</span>
+        <span><i class="dot agg"></i> FedAvg on cloud</span>
+      </div>
+    </section>
+    <aside class="side-panel">
+      <div class="card">
+        <h2 id="metricTitle">Global model</h2>
+        <div class="chart-wrap">
+          <canvas id="accChart" width="320" height="168"></canvas>
+        </div>
+        <div class="chart-legend">
+          <span><i class="chart-line acc"></i> accuracy (left)</span>
+          <span><i class="chart-line loss"></i> loss (right)</span>
+        </div>
+        <div class="metric-row">
+          <div><span class="metric-val" id="lastAcc">-</span><span class="metric-lbl" id="metricLabel">accuracy</span></div>
+          <div><span class="metric-val metric-val-loss" id="lastLoss">-</span><span class="metric-lbl">loss</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Event stream</h2>
+        <ul id="eventLog" class="event-log"></ul>
+      </div>
+    </aside>
+  </main>
+    </div>
+  </div>
+{% endif %}
+
+  {% if embed %}
+  <script src="static/fl-viz.js"></script>
+  {% else %}
+  <script src="{{ url_for('static', filename='fl-viz.js') }}"></script>
+  {% endif %}
+</body>
+</html>

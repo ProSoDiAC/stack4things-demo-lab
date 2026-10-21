@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% block title %}{% trans "Plugins" %}{% endblock %}
+
+{% block page_header %}
+  {% include "horizon/common/_page_header.html" with title=_("Plugins") %}
+{% endblock page_header %}
+
+{% block main %}
+  <div class="alert alert-info" style="margin-bottom: 16px;">
+    <strong>{% trans "Plugin types (Lightning-Rod)" %}</strong>
+    <ul style="margin: 8px 0 0; padding-left: 20px;">
+      <li>
+        <strong>{% trans "Callable = True (sync)" %}</strong>:
+        {% trans "row action Call runs PluginCall. Code must be class Worker(Plugin.Plugin) with run() that finishes and returns via self.q_result.put(...)." %}
+      </li>
+      <li>
+        <strong>{% trans "Callable = False (async)" %}</strong>:
+        {% trans "row actions Start / Stop run PluginStart / PluginStop. run() loops while self._is_running; Stop only clears that flag." %}
+      </li>
+      <li>
+        {% trans "PluginStart / PluginCall / PluginStop are cloud RPCs, not methods on your Worker class. Create -> Inject on board(s) -> Call or Start." %}
+      </li>
+    </ul>
+  </div>
+  {{ table.render }}
+{% endblock %}

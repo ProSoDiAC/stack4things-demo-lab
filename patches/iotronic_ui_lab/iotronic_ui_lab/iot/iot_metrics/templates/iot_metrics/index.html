@@ -1,0 +1,311 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}{% trans "IoT Metrics" %}{% endblock %}
+
+{% block page_header %}
+  {% include "horizon/common/_page_header.html" with title=page_title %}
+{% endblock %}
+
+{% block main %}
+<div class="row">
+  <div class="col-sm-12">
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <h3 class="panel-title">{% trans "Active streams" %}</h3>
+      </div>
+      <div class="panel-body">
+        {% if metrics_health.ok %}
+          <span class="label label-success">{% trans "metrics-gateway online" %}</span>
+        {% else %}
+          <span class="label label-warning">{% trans "metrics-gateway offline" %}</span>
+        {% endif %}
+        <span class="label label-default">{{ live_streams|length }} {% trans "live stream(s)" %}</span>
+        {% if provisioned_streams|length > live_streams|length %}
+          <span class="label label-default">{{ provisioned_streams|length }} {% trans "provisioned" %}</span>
+        {% endif %}
+
+        <form method="get" class="form-inline metrics-filter-bar">
+          <div class="form-group">
+            <label for="filter_stream">
+              {% trans "Data source" %}
+              <span class="metrics-tip" data-toggle="tooltip" data-placement="top"
+                    title="{% trans 'Plugins detected from recent InfluxDB writes (last' %} {{ active_window_minutes }} {% trans 'min). Start a plugin with Enable cloud metrics to appear here.' %}">?</span>
+            </label>
+            <select name="stream" id="filter_stream" class="form-control input-sm metrics-stream-select">
+              {% if live_streams %}
+                {% for stream in live_streams %}
+                  <option value="{{ stream.stream_key }}"
+                          {% if stream.stream_key == selected_stream_key %}selected{% endif %}>
+                    {{ stream.label }}
+                    {% if stream.last_seen %} — {{ stream.last_seen }}{% endif %}
+                  </option>
+                {% endfor %}
+              {% else %}
+                <option value="">{% trans "No live streams detected" %}</option>
+              {% endif %}
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm" {% if not live_streams %}disabled{% endif %}>
+            {% trans "View dashboard" %}
+          </button>
+        </form>
+
+        {% if not live_streams and provisioned_streams %}
+        <div class="alert alert-info metrics-provisioned-hint">
+          {% blocktrans with mins=active_window_minutes %}
+            Streams are provisioned but no data received in the last {{ mins }} minutes.
+            Check that the plugin is started on the board and sending metrics.
+          {% endblocktrans %}
+        </div>
+        {% endif %}
+
+        <table class="table table-striped table-condensed metrics-stream-table">
+          <thead>
+            <tr>
+              <th>{% trans "Stream" %}
+                <span class="metrics-tip" data-toggle="tooltip" title="{% trans 'InfluxDB measurement name.' %}">?</span>
+              </th>
+              <th>{% trans "Board" %}</th>
+              <th>{% trans "Plugin" %}</th>
+              <th>{% trans "Status" %}</th>
+              <th>{% trans "Dashboard" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for stream in live_streams %}
+              <tr>
+                <td><code>{{ stream.stream_id }}</code></td>
+                <td>{{ stream.board_name|default:stream.board_uuid }}</td>
+                <td>{{ stream.plugin_name|default:stream.plugin_uuid }}</td>
+                <td>
+                  <span class="label label-success">{% trans "Live" %}</span>
+                  {% if stream.last_seen %}
+                    <span class="text-muted small">{{ stream.last_seen }}</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <a href="?stream={{ stream.stream_key|urlencode }}" class="btn btn-primary btn-xs">
+                    {% trans "Select" %}
+                  </a>
+                  {% if stream.grafana_panel_url %}
+                    <a href="{{ stream.grafana_panel_url }}" class="btn btn-default btn-xs" target="_blank" rel="noopener">
+                      {% trans "Open Grafana" %}
+                    </a>
+                  {% endif %}
+                </td>
+              </tr>
+            {% empty %}
+              {% for stream in provisioned_streams %}
+              <tr class="text-muted">
+                <td><code>{{ stream.stream_id }}</code></td>
+                <td>{{ stream.board_name|default:stream.board_uuid }}</td>
+                <td>{{ stream.plugin_name|default:stream.plugin_uuid }}</td>
+                <td><span class="label label-default">{% trans "Provisioned" %}</span></td>
+                <td>
+                  {% if stream.grafana_panel_url %}
+                    <a href="{{ stream.grafana_panel_url }}" class="btn btn-default btn-xs" target="_blank" rel="noopener">
+                      {% trans "Open Grafana" %}
+                    </a>
+                  {% else %}
+                    &mdash;
+                  {% endif %}
+                </td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="5">
+                  <div class="metrics-empty">
+                    <p><strong>{% trans "No streams yet" %}</strong></p>
+                    <p class="text-muted">
+                      {% trans "Start a plugin with Enable cloud metrics, or use Manual provision below (advanced)." %}
+                    </p>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            {% endfor %}
+          </tbody>
+        </table>
+
+        <div class="panel panel-default metrics-advanced-panel">
+          <div class="panel-heading metrics-advanced-toggle" role="button" tabindex="0"
+               aria-expanded="false" aria-controls="metrics-provision-body">
+            <h4 class="panel-title" style="margin:0;">
+              <span class="fa fa-chevron-right metrics-chevron"></span>
+              {% trans "Manual provision (advanced)" %}
+              <span class="metrics-tip" data-toggle="tooltip"
+                    title="{% trans 'Only if you cannot use Start + Enable cloud metrics. Creates a write token for the metrics gateway.' %}">?</span>
+            </h4>
+          </div>
+          <div id="metrics-provision-body" class="panel-body" style="display:none;">
+            <p class="text-muted small">
+              {% trans "Register a stream by hand. You still need to pass metrics_url / metrics_token to the plugin yourself." %}
+            </p>
+            <form method="post" class="form-horizontal">
+              {% csrf_token %}
+              <input type="hidden" name="metrics_action" value="provision">
+              <div class="form-group">
+                <label class="col-sm-3 control-label" for="provision_board_uuid">
+                  {% trans "Board" %}
+                  <span class="metrics-tip" data-toggle="tooltip"
+                        title="{% trans 'Online board that will send metrics (tag board in InfluxDB).' %}">?</span>
+                </label>
+                <div class="col-sm-5">
+                  <select name="board_uuid" id="provision_board_uuid" class="form-control" required>
+                    <option value="">{% trans "Select board" %}</option>
+                    {% for board in boards %}
+                      <option value="{{ board.uuid }}" data-name="{{ board.name }}">{{ board.name }}</option>
+                    {% endfor %}
+                  </select>
+                  <input type="hidden" name="board_name" id="provision_board_name" value="">
+                  <p class="help-block">{% trans "Example: board-alpha" %}</p>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="col-sm-3 control-label" for="provision_plugin_uuid">
+                  {% trans "Plugin" %}
+                  <span class="metrics-tip" data-toggle="tooltip"
+                        title="{% trans 'Cloud plugin that will write metrics. Copy UUID from IoT > Plugins if needed.' %}">?</span>
+                </label>
+                <div class="col-sm-5">
+                  <select name="plugin_uuid" id="provision_plugin_uuid" class="form-control" required>
+                    <option value="">{% trans "Select plugin" %}</option>
+                    {% for plugin in plugins %}
+                      <option value="{{ plugin.uuid }}" data-name="{{ plugin.name }}">{{ plugin.name }}</option>
+                    {% endfor %}
+                  </select>
+                  <input type="hidden" name="plugin_name" id="provision_plugin_name" value="">
+                  <p class="help-block">{% trans "Pick from the list or create the plugin first under IoT > Plugins." %}</p>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="col-sm-3 control-label" for="provision_measurement">
+                  {% trans "Measurement" %}
+                  <span class="metrics-tip" data-toggle="tooltip"
+                        title="{% trans 'InfluxDB measurement name written by the plugin (e.g. environmental_data).' %}">?</span>
+                </label>
+                <div class="col-sm-5">
+                  <input type="text" name="measurement" id="provision_measurement" class="form-control"
+                         value="environmental_data">
+                  <p class="help-block">{% trans "Use the measurement name configured in your plugin code." %}</p>
+                </div>
+              </div>
+              <div class="form-group">
+                <div class="col-sm-offset-3 col-sm-5">
+                  <button type="submit" class="btn btn-primary">{% trans "Create stream" %}</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="panel panel-default metrics-live-panel">
+  <div class="panel-heading">
+    <h3 class="panel-title">
+      {% trans "Live dashboard" %}
+      <span class="metrics-tip" data-toggle="tooltip"
+            title="{% trans 'Grafana chart filtered by board/measurement above. Data appears after the plugin starts sending points.' %}">?</span>
+    </h3>
+  </div>
+  <div class="panel-body metrics-live-body">
+    <iframe id="metrics-live-frame"
+            src="{{ metrics_dashboard_url }}"
+            title="{% trans 'IoT metrics live dashboard' %}"
+            frameborder="0"></iframe>
+  </div>
+</div>
+
+<style>
+  .metrics-filter-bar { margin-top: 14px; margin-bottom: 14px; }
+  .metrics-filter-bar .form-group { margin-right: 12px; }
+  .metrics-stream-select { min-width: 360px; max-width: 100%; }
+  .metrics-provisioned-hint { margin-top: 10px; margin-bottom: 0; }
+  .metrics-tip {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+    text-align: center;
+    border-radius: 50%;
+    background: #5bc0de;
+    color: #fff;
+    font-size: 11px;
+    font-weight: bold;
+    cursor: help;
+    margin-left: 4px;
+    vertical-align: middle;
+  }
+  .metrics-stream-table { margin-top: 8px; }
+  .metrics-empty { padding: 12px 0; }
+  .metrics-advanced-panel { margin-top: 16px; margin-bottom: 0; }
+  .metrics-advanced-toggle { cursor: pointer; user-select: none; }
+  .metrics-advanced-toggle .metrics-chevron {
+    margin-right: 6px;
+    transition: transform 0.15s ease;
+  }
+  .metrics-advanced-toggle.open .metrics-chevron { transform: rotate(90deg); }
+  .metrics-live-panel { margin-bottom: 0; }
+  .metrics-live-body { padding: 0; background: #0b1220; }
+  #metrics-live-frame {
+    display: block;
+    width: 100%;
+    min-height: 480px;
+    border: 0;
+  }
+</style>
+
+<script>
+(function () {
+  if (window.jQuery && jQuery.fn.tooltip) {
+    jQuery('[data-toggle="tooltip"]').tooltip({ container: 'body' });
+  }
+
+  var provBoard = document.getElementById('provision_board_uuid');
+  var provBoardName = document.getElementById('provision_board_name');
+  if (provBoard && provBoardName) {
+    provBoard.addEventListener('change', function () {
+      var opt = provBoard.options[provBoard.selectedIndex];
+      provBoardName.value = opt ? (opt.getAttribute('data-name') || '') : '';
+    });
+  }
+
+  var provPlugin = document.getElementById('provision_plugin_uuid');
+  var provPluginName = document.getElementById('provision_plugin_name');
+  if (provPlugin && provPluginName) {
+    provPlugin.addEventListener('change', function () {
+      var opt = provPlugin.options[provPlugin.selectedIndex];
+      provPluginName.value = opt ? (opt.getAttribute('data-name') || '') : '';
+    });
+  }
+
+  var streamSelect = document.getElementById('filter_stream');
+  if (streamSelect) {
+    streamSelect.addEventListener('change', function () {
+      if (streamSelect.value) {
+        streamSelect.form.submit();
+      }
+    });
+  }
+
+  var toggle = document.querySelector('.metrics-advanced-toggle');
+  var body = document.getElementById('metrics-provision-body');
+  if (toggle && body) {
+    function flip() {
+      var open = body.style.display !== 'none';
+      body.style.display = open ? 'none' : 'block';
+      toggle.classList.toggle('open', !open);
+      toggle.setAttribute('aria-expanded', open ? 'false' : 'true');
+    }
+    toggle.addEventListener('click', flip);
+    toggle.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); }
+    });
+  }
+})();
+</script>
+{% endblock %}

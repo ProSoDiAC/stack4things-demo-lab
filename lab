@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# ./lab — one entry point for the Stack4Things demo lab.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")"
+ROOT="$(pwd)"
+
+usage() {
+  cat <<USAGE
+Usage: ./lab <command> [args]
+
+  init [HOST]     create .env (and vm-ip.txt); HOST = address users reach this machine at
+  up              build images and start the whole stack, wait until healthy
+  bootstrap       create boards, plugins, web services and demo data (idempotent)
+  verify [opts]   health report with self-heal  (--check-only: report only)
+  urls            print the URLs and credentials
+  ps | logs [svc] | restart [svc] | down
+  backup [DIR]    dump DB + volumes into DIR (default: ./backups/<timestamp>)
+  restore DIR     restore a backup made by './lab backup' (stack must be down)
+  reset           DESTROY all data (containers + volumes) after confirmation
+USAGE
+}
+
+load_env() {
+  [ -f .env ] || ./lab init >/dev/null
+  set -a; . ./.env; set +a
+  export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-s4t}"
+  export S4T_LAB_HOST="${S4T_LAB_HOST:-127.0.0.1}"
+}
+
+dc() { docker compose "$@"; }
+
+cmd_init() {
+  [ -f .env ] || cp .env.example .env
+  local host="${1:-}"
+  if [ -z "$host" ]; then
+    host="$(sed -n 's/^S4T_LAB_HOST=\([^ #]*\).*/\1/p' .env)"
+    if [ -z "$host" ] || [ "$host" = "127.0.0.1" ]; then
+      host="$(hostname -I 2>/dev/null | awk '{print $1}')"
+      host="${host:-127.0.0.1}"
+    fi
+  fi
+  sed -i "s|^S4T_LAB_HOST=.*|S4T_LAB_HOST=${host}|; s|^REPO_ROOT=.*|REPO_ROOT=${ROOT}|" .env
+  echo "$host" > vm-ip.txt
+  mkdir -p experiments/federated-learning/.run
+  echo ".env ready (host=${host}, repo=${ROOT})"
+}
+
+cmd_up() {
+  load_env
+  dc up -d --build --wait --wait-timeout "${LAB_WAIT_TIMEOUT:-900}"
+  echo
+  echo "Stack is up. First install? run:  ./lab bootstrap"
+}
+
+cmd_urls() {
+  load_env
+  local h="$S4T_LAB_HOST"
+  cat <<URLS
+Horizon (IoTronic UI)  http://$h/horizon     admin / ${ADMIN_PASS:-s4t}   (domain: Default)
+Grafana                http://$h:3000        admin / ${GRAFANA_ADMIN_PASSWORD:-admin}  (anonymous viewer enabled)
+Lightning-Rod UIs      http://$h:1474 .. :1479   me / arancino
+WSTUN public ports     $h:50001-50100
+Crossbar (WAMP, TLS)   wss://$h:8181
+Admin APIs (loopback)  Keystone :5000  Conductor :8812  MariaDB :3306  RabbitMQ :15672  InfluxDB :8086
+URLS
+}
+
+cmd_reset() {
+  load_env
+  read -r -p "This DELETES every container and volume of project '${COMPOSE_PROJECT_NAME}'. Type 'reset' to continue: " a
+  [ "$a" = "reset" ] || { echo aborted; exit 1; }
+  # on-demand Lightning-Rods (Horizon "Create LR Container") are not Compose services: remove only this project's
+  docker ps -aq --filter label=s4t.lab.dynamic_lr=1 --filter "network=${COMPOSE_PROJECT_NAME}_s4t" | xargs -r docker rm -f
+  dc down -v --remove-orphans
+  docker volume ls -q | grep -E "^${COMPOSE_PROJECT_NAME}_lr[0-9]+_" | xargs -r docker volume rm
+}
+
+case "${1:-}" in
+  init)       shift; cmd_init "$@" ;;
+  up)         cmd_up ;;
+  bootstrap)  load_env; exec python3 scripts/bootstrap.py "${@:2}" ;;
+  verify)     load_env; exec python3 scripts/verify-demo.py "${@:2}" ;;
+  urls)       cmd_urls ;;
+  ps)         load_env; dc ps ;;
+  logs)       load_env; shift; dc logs --tail 100 -f "$@" ;;
+  restart)    load_env; shift; dc restart "$@" ;;
+  down)       load_env; dc down ;;
+  backup)     load_env; exec scripts/backup.sh "${@:2}" ;;
+  restore)    load_env; exec scripts/restore.sh "${@:2}" ;;
+  reset)      cmd_reset ;;
+  ""|-h|--help|help) usage ;;
+  *) usage; exit 1 ;;
+esac

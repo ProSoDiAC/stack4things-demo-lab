@@ -1,0 +1,10 @@
+{% extends "horizon/common/_modal_form.html" %}
+{% load i18n %}
+
+{% block modal-body-right %}
+  <h3>{% trans "Description:" %}</h3>
+  <p>{% trans "Start an asynchronous (non-Callable) plugin on board(s)." %}</p>
+  <p>{% trans "Sends PluginStart RPC. The board starts Worker.run() in a thread; loop with while self._is_running until Stop." %}</p>
+  <p>{% trans "Cloud metrics are enabled by default (stream + gateway token injected on start). Required for EnvironmentalDemo." %}</p>
+  <p class="text-muted">{% trans "For sync plugins (Callable on) use Call instead." %}</p>
+{% endblock %}

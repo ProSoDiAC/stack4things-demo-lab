@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>WoT Fritzing Lab</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Segoe UI",Helvetica,Arial,sans-serif;background:#eceff1;color:#263238}
+header{background:#263238;color:#fff;padding:12px 20px;display:flex;align-items:center;gap:12px}
+header h1{font-size:1.1rem;font-weight:700;flex:1}
+.badge{background:#4caf50;color:#fff;border-radius:10px;padding:2px 10px;font-size:.75rem;font-weight:700}
+.badge.err{background:#f44336}
+main{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px;max-width:1200px;margin:0 auto}
+@media(max-width:780px){main{grid-template-columns:1fr}}
+.card{background:#fff;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.1);padding:14px}
+.card.full{grid-column:1/-1}
+.card h2{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#546e7a;margin-bottom:10px;border-bottom:1px solid #eceff1;padding-bottom:6px}
+/* Circuit */
+.circuit-bg{background:#1a2335;border-radius:6px;padding:6px;overflow-x:auto}
+svg.ckt{width:100%;min-width:620px;height:auto;display:block}
+/* LED dots */
+.led-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.dot{width:48px;height:48px;border-radius:50%;border:3px solid #555;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.6rem;font-weight:700;color:#fff;transition:all .15s;user-select:none}
+.dot.off{opacity:.35}
+.dot.red{background:#e53935}.dot.red.on{opacity:1;box-shadow:0 0 14px #ff5252,0 0 28px #e53935}
+.dot.green{background:#43a047}.dot.green.on{opacity:1;box-shadow:0 0 14px #69f0ae,0 0 28px #43a047}
+.dot.yellow{background:#f9a825}.dot.yellow.on{opacity:1;box-shadow:0 0 14px #ffff00,0 0 28px #f9a825}
+.dot.blue{background:#1e88e5}.dot.blue.on{opacity:1;box-shadow:0 0 14px #40c4ff,0 0 28px #1e88e5}
+/* Buttons */
+.br{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+button{border:0;border-radius:4px;padding:8px 14px;font-size:.8rem;font-weight:600;cursor:pointer;color:#fff;transition:filter .12s}
+button:hover{filter:brightness(1.15)}
+button:active{filter:brightness(.82)}
+.b-blue{background:#1976d2}.b-green{background:#388e3c}.b-red{background:#c62828}
+.b-orange{background:#e65100}.b-grey{background:#546e7a}.b-sm{padding:6px 10px;font-size:.75rem}
+/* Servo */
+.servo-dial{width:80px;height:80px;border-radius:50%;background:#37474f;border:4px solid #546e7a;position:relative;flex-shrink:0}
+.servo-needle{position:absolute;top:50%;left:50%;width:36px;height:3px;background:#42a5f5;transform-origin:left center;transform:translateY(-50%) rotate(-90deg);transition:transform .25s;border-radius:2px}
+/* Motor */
+.mwheel{width:68px;height:68px;border-radius:50%;border:5px solid #546e7a;position:relative;overflow:hidden;flex-shrink:0}
+.mspoke{position:absolute;top:50%;left:50%;width:50%;height:2px;background:#1976d2;transform-origin:left center}
+/* Relay */
+.rbox{display:inline-flex;align-items:center;justify-content:center;width:68px;height:36px;border-radius:4px;font-size:.8rem;font-weight:700;color:#fff;transition:all .2s}
+.rbox.off{background:#546e7a}.rbox.on{background:#e53935;box-shadow:0 0 10px rgba(229,57,53,.5)}
+/* LCD */
+.lcd{background:#2e7d32;border-radius:4px;padding:8px 12px;font-family:monospace;color:#ccff90;font-size:1rem;line-height:1.65;min-height:58px;border:3px solid #1b5e20;box-shadow:inset 0 2px 5px rgba(0,0,0,.3)}
+/* Sensors */
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}
+.scard{background:#f5f5f5;border-radius:6px;padding:10px;text-align:center}
+.scard .sl{font-size:.65rem;font-weight:700;color:#78909c;text-transform:uppercase;margin-bottom:2px}
+.scard .sv{font-size:1.3rem;font-weight:700;color:#263238}
+.scard .su{font-size:.7rem;color:#90a4ae}
+.mpip{width:14px;height:14px;border-radius:50%;display:inline-block;vertical-align:middle}
+.mpip.on{background:#f44336;box-shadow:0 0 6px #f44336}.mpip.off{background:#bdbdbd}
+input[type=range]{accent-color:#1976d2;width:100%}
+input[type=text]{border:1px solid #cfd8dc;border-radius:4px;padding:5px 8px;font-size:.8rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>&#9889; WoT Fritzing Lab — Lightning Rod</h1>
+  <span class="badge" id="badge">LIVE</span>
+</header>
+<main>
+
+<!-- CIRCUIT -->
+<div class="card full">
+  <h2>Circuit diagram</h2>
+  <div class="circuit-bg">
+   <svg class="ckt" viewBox="0 0 980 300" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="gl"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    <!-- board -->
+    <rect x="20" y="70" width="130" height="160" rx="6" fill="#004d40" stroke="#00695c"/>
+    <text x="85" y="143" text-anchor="middle" fill="#e0f2f1" font-size="13" font-weight="bold">Lightning</text>
+    <text x="85" y="160" text-anchor="middle" fill="#e0f2f1" font-size="13" font-weight="bold">Rod</text>
+    <text x="85" y="178" text-anchor="middle" fill="#80cbc4" font-size="8">Stack4Things</text>
+    <g fill="#b2dfdb" font-size="8" font-family="monospace">
+      <text x="155" y="105">D18(red)</text><text x="155" y="120">D23(grn)</text>
+      <text x="155" y="135">D24(yel)</text><text x="155" y="150">D25(blu)</text>
+      <text x="155" y="165">D12(srv)</text><text x="155" y="180">D13(mtr)</text>
+      <text x="155" y="195">D16(rly)</text><text x="155" y="210">D4(btn)</text>
+    </g>
+    <g stroke="#80cbc4" stroke-width="1.5" fill="none">
+      <line x1="150" y1="102" x2="180" y2="102"/>
+      <line x1="150" y1="117" x2="180" y2="117"/>
+      <line x1="150" y1="132" x2="180" y2="132"/>
+      <line x1="150" y1="147" x2="180" y2="147"/>
+      <line x1="150" y1="162" x2="180" y2="162"/>
+      <line x1="150" y1="177" x2="180" y2="177"/>
+      <line x1="150" y1="192" x2="180" y2="192"/>
+      <line x1="150" y1="207" x2="180" y2="207"/>
+    </g>
+    <!-- resistors + LEDs -->
+    <g>
+      <rect x="188" y="96" width="34" height="12" rx="2" fill="#c8b09c" stroke="#8d6e63"/><line x1="180" y1="102" x2="188" y2="102" stroke="#e53935" stroke-width="1.5"/><line x1="222" y1="102" x2="252" y2="102" stroke="#e53935" stroke-width="1.5"/>
+      <rect x="188" y="111" width="34" height="12" rx="2" fill="#c8b09c" stroke="#8d6e63"/><line x1="180" y1="117" x2="188" y2="117" stroke="#43a047" stroke-width="1.5"/><line x1="222" y1="117" x2="252" y2="117" stroke="#43a047" stroke-width="1.5"/>
+      <rect x="188" y="126" width="34" height="12" rx="2" fill="#c8b09c" stroke="#8d6e63"/><line x1="180" y1="132" x2="188" y2="132" stroke="#f9a825" stroke-width="1.5"/><line x1="222" y1="132" x2="252" y2="132" stroke="#f9a825" stroke-width="1.5"/>
+      <rect x="188" y="141" width="34" height="12" rx="2" fill="#c8b09c" stroke="#8d6e63"/><line x1="180" y1="147" x2="188" y2="147" stroke="#1e88e5" stroke-width="1.5"/><line x1="222" y1="147" x2="252" y2="147" stroke="#1e88e5" stroke-width="1.5"/>
+    </g>
+    <!-- LED symbols -->
+    <g id="sled-red"><polygon points="252,96 268,76 284,96" fill="#e53935" id="ldred"/><rect x="264" y="96" width="10" height="6" fill="#9e9e9e"/><line x1="267" y1="102" x2="267" y2="115" stroke="#9e9e9e" stroke-width="1.5"/><line x1="275" y1="102" x2="275" y2="115" stroke="#9e9e9e" stroke-width="1.5"/></g>
+    <g id="sled-green"><polygon points="252,112 268,92 284,112" fill="#43a047" id="ldgreen"/><rect x="264" y="112" width="10" height="6" fill="#9e9e9e"/><line x1="267" y1="118" x2="267" y2="131" stroke="#9e9e9e" stroke-width="1.5"/><line x1="275" y1="118" x2="275" y2="131" stroke="#9e9e9e" stroke-width="1.5"/></g>
+    <g id="sled-yellow"><polygon points="252,128 268,108 284,128" fill="#f9a825" id="ldyellow"/><rect x="264" y="128" width="10" height="6" fill="#9e9e9e"/><line x1="267" y1="134" x2="267" y2="147" stroke="#9e9e9e" stroke-width="1.5"/><line x1="275" y1="134" x2="275" y2="147" stroke="#9e9e9e" stroke-width="1.5"/></g>
+    <g id="sled-blue"><polygon points="252,144 268,124 284,144" fill="#1e88e5" id="ldblue"/><rect x="264" y="144" width="10" height="6" fill="#9e9e9e"/><line x1="267" y1="150" x2="267" y2="163" stroke="#9e9e9e" stroke-width="1.5"/><line x1="275" y1="150" x2="275" y2="163" stroke="#9e9e9e" stroke-width="1.5"/></g>
+    <line x1="270" y1="165" x2="270" y2="285" stroke="#424242" stroke-width="2" stroke-dasharray="4 3"/>
+    <!-- Servo -->
+    <rect x="340" y="90" width="58" height="38" rx="4" fill="#546e7a" stroke="#37474f"/>
+    <text x="369" y="114" text-anchor="middle" fill="#eceff1" font-size="9" font-weight="bold">SERVO</text>
+    <line x1="180" y1="162" x2="340" y2="162" stroke="#ff9800" stroke-width="1.5" stroke-dasharray="4 2"/>
+    <line id="sv-arm" x1="398" y1="109" x2="436" y2="109" stroke="#42a5f5" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="398" cy="109" r="5" fill="#263238"/>
+    <!-- Motor -->
+    <rect x="340" y="150" width="48" height="32" rx="4" fill="#546e7a" stroke="#37474f"/>
+    <text x="364" y="169" text-anchor="middle" fill="#eceff1" font-size="8" font-weight="bold">MOTOR</text>
+    <circle cx="408" cy="166" r="16" fill="none" stroke="#546e7a" stroke-width="4"/>
+    <g id="sv-spokes" stroke="#1976d2" stroke-width="2"><line x1="408" y1="150" x2="408" y2="182"/><line x1="392" y1="166" x2="424" y2="166"/><line x1="397" y1="155" x2="419" y2="177"/><line x1="397" y1="177" x2="419" y2="155"/></g>
+    <line x1="180" y1="177" x2="340" y2="177" stroke="#42a5f5" stroke-width="1.5" stroke-dasharray="4 2"/>
+    <!-- Relay -->
+    <rect x="480" y="90" width="58" height="38" rx="4" fill="#37474f" stroke="#263238"/>
+    <text x="509" y="108" text-anchor="middle" fill="#eceff1" font-size="8" font-weight="bold">RELAY</text>
+    <rect x="484" y="114" width="50" height="10" rx="2" id="rl-coil" fill="#546e7a"/>
+    <text x="509" y="122" text-anchor="middle" fill="#b0bec5" font-size="7" id="rl-svg">OFF</text>
+    <line x1="180" y1="192" x2="480" y2="192" stroke="#9c27b0" stroke-width="1.5" stroke-dasharray="4 2"/>
+    <!-- Button -->
+    <circle cx="480" cy="195" r="12" fill="#c62828" stroke="#b71c1c"/>
+    <circle cx="480" cy="195" r="7" fill="#ef5350" id="sv-btn"/>
+    <text x="480" y="215" text-anchor="middle" fill="#90a4ae" font-size="7">D4</text>
+    <line x1="180" y1="207" x2="468" y2="207" stroke="#bdbdbd" stroke-width="1.5" stroke-dasharray="4 2"/>
+    <!-- LCD -->
+    <rect x="560" y="78" width="240" height="68" rx="4" fill="#2e7d32" stroke="#1b5e20"/>
+    <rect x="566" y="84" width="228" height="24" rx="2" fill="#33691e"/>
+    <text x="568" y="99" fill="#ccff90" font-size="10" font-family="monospace" id="sv-lcd1">Stack4Things</text>
+    <rect x="566" y="110" width="228" height="24" rx="2" fill="#33691e"/>
+    <text x="568" y="126" fill="#ccff90" font-size="10" font-family="monospace" id="sv-lcd2">WoT Fritzing Lab</text>
+    <!-- Sensors strip -->
+    <rect x="340" y="215" width="620" height="68" rx="6" fill="#1e3a5f" stroke="#1565c0"/>
+    <text x="650" y="232" text-anchor="middle" fill="#90caf9" font-size="8" font-weight="bold">SENSORS</text>
+    <text x="375" y="248" fill="#b3e5fc" font-size="7" font-weight="bold">TEMP</text><text x="375" y="264" fill="#80cbc4" font-size="10" id="sv-temp">22°C</text>
+    <text x="450" y="248" fill="#b3e5fc" font-size="7" font-weight="bold">HUMIDITY</text><text x="450" y="264" fill="#80cbc4" font-size="10" id="sv-hum">48%</text>
+    <text x="540" y="248" fill="#b3e5fc" font-size="7" font-weight="bold">LIGHT</text><text x="540" y="264" fill="#80cbc4" font-size="10" id="sv-light">512</text>
+    <text x="620" y="248" fill="#b3e5fc" font-size="7" font-weight="bold">DISTANCE</text><text x="620" y="264" fill="#80cbc4" font-size="10" id="sv-dist">42cm</text>
+    <text x="720" y="248" fill="#b3e5fc" font-size="7" font-weight="bold">MOTION</text><circle cx="738" cy="260" r="7" id="sv-motion" fill="#bdbdbd"/>
+    <text x="810" y="248" fill="#b3e5fc" font-size="7" font-weight="bold">BUTTON</text><circle cx="828" cy="260" r="7" id="sv-btnc" fill="#bdbdbd"/>
+   </svg>
+  </div>
+</div>
+
+<!-- LEDs -->
+<div class="card">
+  <h2>&#128161; LEDs (GPIO 18/23/24/25)</h2>
+  <div class="led-row">
+    <div class="dot red off" id="led-red" onclick="tlLed('red')">RED</div>
+    <div class="dot green off" id="led-green" onclick="tlLed('green')">GRN</div>
+    <div class="dot yellow off" id="led-yellow" onclick="tlLed('yellow')">YEL</div>
+    <div class="dot blue off" id="led-blue" onclick="tlLed('blue')">BLU</div>
+  </div>
+  <div class="br">
+    <button class="b-green b-sm" onclick="act('POST','/api/leds/all/on')">All ON</button>
+    <button class="b-red b-sm" onclick="act('POST','/api/leds/all/off')">All OFF</button>
+    <button class="b-grey b-sm" id="btn-chase" onclick="toggleChase()">Chase</button>
+  </div>
+</div>
+
+<!-- Servo -->
+<div class="card">
+  <h2>&#9881; Servo SG90 (GPIO 12)</h2>
+  <div style="display:flex;align-items:center;gap:16px;margin-bottom:10px">
+    <div class="servo-dial"><div class="servo-needle" id="servo-needle"></div></div>
+    <div style="font-size:1.8rem;font-weight:700;color:#1976d2" id="servo-deg">90°</div>
+  </div>
+  <input type="range" min="0" max="180" value="90" id="servo-sl" style="margin-bottom:8px">
+  <div class="br">
+    <button class="b-sm b-grey" onclick="setServo(0)">0°</button>
+    <button class="b-sm b-grey" onclick="setServo(45)">45°</button>
+    <button class="b-sm b-blue" onclick="setServo(90)">90°</button>
+    <button class="b-sm b-grey" onclick="setServo(135)">135°</button>
+    <button class="b-sm b-grey" onclick="setServo(180)">180°</button>
+    <button class="b-sm b-orange" id="btn-sweep" onclick="toggleSweep()">Sweep</button>
+  </div>
+</div>
+
+<!-- Motor + Relay -->
+<div class="card">
+  <h2>&#9889; Motor (GPIO 13) &amp; Relay (GPIO 16)</h2>
+  <div style="display:flex;gap:20px;flex-wrap:wrap">
+    <div style="flex:1;min-width:140px">
+      <div style="font-size:.7rem;color:#78909c;margin-bottom:6px">MOTOR speed</div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="mwheel" id="mwheel">
+          <div class="mspoke" id="ms0" style="transform-origin:left center;left:50%;top:50%;transform:translateY(-50%) rotate(0deg)"></div>
+          <div class="mspoke" id="ms1" style="transform-origin:left center;left:50%;top:50%;transform:translateY(-50%) rotate(45deg)"></div>
+          <div class="mspoke" id="ms2" style="transform-origin:left center;left:50%;top:50%;transform:translateY(-50%) rotate(90deg)"></div>
+          <div class="mspoke" id="ms3" style="transform-origin:left center;left:50%;top:50%;transform:translateY(-50%) rotate(135deg)"></div>
+        </div>
+        <div style="font-size:1.3rem;font-weight:700;color:#1976d2" id="motor-spd">0%</div>
+      </div>
+      <input type="range" min="0" max="100" value="0" id="motor-sl" style="margin:6px 0">
+      <div class="br">
+        <button class="b-sm b-red" onclick="setMotor(0)">Stop</button>
+        <button class="b-sm b-blue" onclick="setMotor(50)">50%</button>
+        <button class="b-sm b-green" onclick="setMotor(100)">Full</button>
+      </div>
+    </div>
+    <div style="flex:0 0 auto">
+      <div style="font-size:.7rem;color:#78909c;margin-bottom:6px">RELAY</div>
+      <div class="rbox off" id="relay-box">OFF</div>
+      <div class="br" style="margin-top:8px">
+        <button class="b-sm b-green" onclick="act('POST','/api/relay/on')">ON</button>
+        <button class="b-sm b-red" onclick="act('POST','/api/relay/off')">OFF</button>
+        <button class="b-sm b-orange" onclick="act('POST','/api/relay/toggle')">Toggle</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LCD + Button -->
+<div class="card">
+  <h2>&#128250; LCD 16×2 &amp; Button (GPIO 4)</h2>
+  <div class="lcd" id="lcd">Stack4Things<br>WoT Fritzing Lab</div>
+  <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+    <input type="text" id="l1" placeholder="Line 1" maxlength="16" style="flex:1">
+    <input type="text" id="l2" placeholder="Line 2" maxlength="16" style="flex:1">
+    <button class="b-blue b-sm" onclick="sendDisplay()">Send</button>
+    <button class="b-grey b-sm" onclick="resetDisplay()">Reset</button>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+    <span style="font-size:.75rem;color:#78909c">Button:</span>
+    <button class="b-sm b-red" onclick="act('POST','/api/button/press')">Press</button>
+    <button class="b-sm b-grey" onclick="act('POST','/api/button/release')">Release</button>
+    <span id="btn-state" style="font-size:.8rem;font-weight:600;color:#78909c">Released</span>
+  </div>
+</div>
+
+<!-- Sensors -->
+<div class="card full">
+  <h2>&#128268; Live sensors (auto-refresh 2.5 s)</h2>
+  <div class="sgrid">
+    <div class="scard"><div class="sl">Temperature</div><div class="sv" id="s-temp">—</div><div class="su">°C</div></div>
+    <div class="scard"><div class="sl">Humidity</div><div class="sv" id="s-hum">—</div><div class="su">%</div></div>
+    <div class="scard"><div class="sl">Light (LDR)</div><div class="sv" id="s-light">—</div><div class="su">/ 1023</div></div>
+    <div class="scard"><div class="sl">Distance</div><div class="sv" id="s-dist">—</div><div class="su">cm</div></div>
+    <div class="scard"><div class="sl">Motion (PIR)</div><div class="sv" id="s-motion"><span class="mpip off" id="mpip"></span> <span id="mtxt">—</span></div></div>
+  </div>
+</div>
+
+</main>
+<script>
+function $(id){ return document.getElementById(id); }
+function setText(id,v){ var e=$(id); if(e) e.textContent=v; }
+/* Same-origin relative /api/* when opened at http://host:port/ */
+var API_BASE='';
+function apiUrl(p){ if(!p) return API_BASE||'/'; if(p.charAt(0)!=='/') p='/'+p; return API_BASE+p; }
+function apiPost(p,body){ return fetch(apiUrl(p),{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:body?JSON.stringify(body):''}).then(function(r){ if(!r.ok) throw new Error('http '+r.status); return r.json();}); }
+function apiGet(p){ return fetch(apiUrl(p),{headers:{Accept:'application/json'}}).then(function(r){ if(!r.ok) throw new Error('http '+r.status); return r.json();}); }
+function act(m,p,b){ var fn=m==='POST'?apiPost(p,b||null):apiGet(p); fn.then(function(d){applyAll(d);}).catch(function(){}); }
+
+function tlLed(c){ apiPost('/api/led/'+c+'/toggle').then(function(d){ var st={}; st[c]=d; applyLeds(st); }); }
+function applyLeds(leds){
+  ['red','green','yellow','blue'].forEach(function(c){
+    if(!(c in leds)) return;
+    var on=leds[c].on;
+    $(('led-'+c)).className='dot '+c+(on?' on':' off');
+    var col={red:'#ff1744',green:'#00e676',yellow:'#ffff00',blue:'#40c4ff'};
+    var off2={red:'#e53935',green:'#43a047',yellow:'#f9a825',blue:'#1e88e5'};
+    var s=$('ld'+c); if(s){s.style.fill=on?col[c]:off2[c];s.style.filter=on?'url(#gl)':'none';}
+  });
+}
+
+var sweepId=null;
+$('servo-sl').addEventListener('input',function(){setServo(+this.value);});
+function setServo(v){
+  $('servo-sl').value=v; $('servo-deg').textContent=v+'°';
+  $('servo-needle').style.transform='translateY(-50%) rotate('+(v-90)+'deg)';
+  var arm=$('sv-arm');
+  if(arm){var rad=(v-90)*Math.PI/180,len=42; arm.setAttribute('x2',(398+len*Math.cos(rad)).toFixed(1)); arm.setAttribute('y2',(109+len*Math.sin(rad)).toFixed(1));}
+  apiPost('/api/servo',{angle:v});
+}
+function toggleSweep(){
+  if(sweepId){clearInterval(sweepId);sweepId=null;$('btn-sweep').textContent='Sweep';return;}
+  $('btn-sweep').textContent='Stop sweep'; var dir=1,v=90;
+  sweepId=setInterval(function(){v+=dir*3;if(v>=180||v<=0)dir=-dir;setServo(v);},80);
+}
+
+var mAngle=0,mAnim=null;
+$('motor-sl').addEventListener('input',function(){setMotor(+this.value);});
+function setMotor(spd){
+  $('motor-sl').value=spd; $('motor-spd').textContent=spd+'%';
+  if(spd>0&&!mAnim){mAnim=setInterval(function(){mAngle=(mAngle+spd*0.4)%360;[0,1,2,3].forEach(function(i){$('ms'+i).style.transform='translateY(-50%) rotate('+(mAngle+i*45)+'deg)';});var sp=$('sv-spokes');if(sp)sp.setAttribute('transform','rotate('+mAngle+',408,166)');},50);}
+  else if(spd===0&&mAnim){clearInterval(mAnim);mAnim=null;}
+  apiPost('/api/motor',{speed:+spd});
+}
+
+function applyRelay(on){ $('relay-box').className='rbox '+(on?'on':'off'); $('relay-box').textContent=on?'ON':'OFF'; var c=$('rl-coil');if(c)c.style.fill=on?'#ef5350':'#546e7a'; setText('rl-svg',on?'ON':'OFF'); }
+
+function sendDisplay(){ var l1=$('l1').value,l2=$('l2').value; apiPost('/api/display',{line1:l1,line2:l2}).then(function(d){applyDisplay(d.line1,d.line2);}); }
+function resetDisplay(){ apiPost('/api/display',{line1:'Stack4Things',line2:'WoT Fritzing Lab'}).then(function(d){applyDisplay(d.line1,d.line2);}); }
+function applyDisplay(l1,l2){ $('lcd').innerHTML=(l1||'')+'<br>'+(l2||''); setText('sv-lcd1',l1||''); setText('sv-lcd2',l2||''); }
+
+var chaseId=null,chaseIdx=0,CC=['red','green','yellow','blue'];
+function toggleChase(){
+  if(chaseId){clearInterval(chaseId);chaseId=null;$('btn-chase').textContent='Chase';act('POST','/api/leds/all/off');return;}
+  $('btn-chase').textContent='Stop chase';
+  chaseId=setInterval(function(){
+    apiPost('/api/leds/all/off').then(function(){ apiPost('/api/led/'+CC[chaseIdx%4]+'/on').then(function(d){var st={};st[CC[chaseIdx%4]]=d;applyLeds(st);}); });
+    chaseIdx++;
+  },380);
+}
+
+function applySensors(s){
+  setText('s-temp',s.temperature); setText('s-hum',s.humidity); setText('s-light',s.light); setText('s-dist',s.distance_cm);
+  var m=s.motion; $('mpip').className='mpip '+(m?'on':'off'); setText('mtxt',m?'MOTION!':'None');
+  setText('sv-temp',s.temperature+'°C'); setText('sv-hum',s.humidity+'%'); setText('sv-light',s.light); setText('sv-dist',s.distance_cm+'cm');
+  var sm=$('sv-motion');if(sm)sm.style.fill=m?'#ef5350':'#bdbdbd';
+}
+function applyButton(pressed){ var b=$('btn-state');b.textContent=pressed?'PRESSED':'Released';b.style.color=pressed?'#ef5350':'#78909c'; var sv=$('sv-btnc');if(sv)sv.style.fill=pressed?'#ef5350':'#bdbdbd'; }
+
+function applyAll(d){
+  if(!d)return;
+  if(d.leds)applyLeds(d.leds);
+  if(d.servo)setServo(d.servo.angle);
+  if(d.motor){$('motor-sl').value=d.motor.speed;$('motor-spd').textContent=d.motor.speed+'%';}
+  if(d.relay)applyRelay(d.relay.on);
+  if(d.display)applyDisplay(d.display.line1,d.display.line2);
+  if(d.button)applyButton(d.button.pressed);
+  if(d.sensors)applySensors(d.sensors);
+}
+
+function refresh(){
+  apiGet('/api/circuit').then(function(d){applyAll(d);$('badge').textContent='LIVE';$('badge').className='badge';}).catch(function(){$('badge').textContent='ERR';$('badge').className='badge err';});
+}
+refresh(); setInterval(refresh,2500);
+</script>
+</body>
+</html>

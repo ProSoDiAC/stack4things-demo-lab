@@ -1,0 +1,8 @@
+{% extends "horizon/common/_modal_form.html" %}
+{% load i18n %}
+
+{% block modal-body-right %}
+  <h3>{% trans "Description:" %}</h3>
+  <p>{% trans "Stop an asynchronous plugin on board(s)." %}</p>
+  <p>{% trans "Sends PluginStop RPC. Lightning-Rod calls worker.stop() which sets self._is_running = False so the run() loop can exit." %}</p>
+{% endblock %}

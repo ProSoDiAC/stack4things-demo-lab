@@ -1,0 +1,660 @@
+{% load i18n %}
+{% with cm="/horizon/static/plugin_ide/codemirror/5.65.16" %}
+
+<link rel="stylesheet" href="{{ cm }}/codemirror.min.css">
+<link rel="stylesheet" href="{{ cm }}/addon/dialog/dialog.min.css">
+<link rel="stylesheet" href="{{ cm }}/addon/fold/foldgutter.min.css">
+<link rel="stylesheet" href="{{ cm }}/addon/hint/show-hint.min.css">
+<link rel="stylesheet" href="{{ cm }}/theme/material-darker.min.css">
+
+<div class="plugin-ide-page">
+  <div class="plugin-ide-topbar clearfix">
+    <div class="pull-left">
+      <h3 class="plugin-ide-title">
+        {% if plugin_ide_mode == 'create' %}
+          {% trans "Create Plugin" %}
+        {% else %}
+          {% trans "Edit Plugin" %}
+        {% endif %}
+      </h3>
+      <p class="text-muted plugin-ide-subtitle">
+        {% trans "Lightning-Rod plugin editor (IoTronic). Use the templates on the left for sync Call or async Start/Stop." %}
+      </p>
+    </div>
+    <div class="pull-right plugin-ide-top-actions">
+      <a href="{{ cancel_url|default:'/horizon/iot/plugins/' }}" class="btn btn-default">{% trans "Cancel" %}</a>
+      <button type="submit" form="{{ form_id }}" class="btn btn-primary">{{ submit_label }}</button>
+    </div>
+  </div>
+
+  <form id="{{ form_id }}" action="{{ submit_url }}" method="POST" class="plugin-ide-form">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+    <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
+    <div id="plugin-ide-status-msg" class="alert alert-warning" style="display:none; margin: 12px 18px 0;"></div>
+
+    <div class="row plugin-ide-meta-row">
+      <div class="col-md-4">
+        <div class="form-group{% if form.name.errors %} has-error{% endif %}">
+          <label for="{{ form.name.id_for_label }}">{{ form.name.label }}</label>
+          {{ form.name }}
+          {% if form.name.errors %}<span class="help-block">{{ form.name.errors }}</span>{% endif %}
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="checkbox" style="margin-top: 28px;">
+          <label>{{ form.public }} {{ form.public.label }}</label>
+        </div>
+        <div class="checkbox">
+          <label>{{ form.callable }} {{ form.callable.label }}</label>
+        </div>
+        {% if form.callable.help_text %}
+        <p class="help-block plugin-ide-callable-help">{{ form.callable.help_text }}</p>
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        {% if form.uuid %}{{ form.uuid }}{% endif %}
+        {% if form.owner %}{{ form.owner }}{% endif %}
+      </div>
+    </div>
+
+    <div class="plugin-ide-guide" id="plugin-ide-guide">
+      <strong>{% trans "How plugins run on Lightning-Rod" %}</strong>
+      <ul class="plugin-ide-guide-list">
+        <li>
+          {% trans "Required shape: class Worker(Plugin.Plugin) with def run(self). Keep the class name Worker." %}
+        </li>
+        <li>
+          {% trans "PluginStart / PluginStop / PluginCall are cloud RPCs (Horizon actions), NOT methods you implement on Worker." %}
+        </li>
+        <li>
+          <strong>{% trans "Callable ON (sync)" %}</strong>:
+          {% trans "table action Call -> PluginCall -> run() once; put the result with self.q_result.put(...)." %}
+        </li>
+        <li>
+          <strong>{% trans "Callable OFF (async)" %}</strong>:
+          {% trans "table actions Start/Stop -> PluginStart/PluginStop -> run() loop while self._is_running; stop() only clears that flag." %}
+        </li>
+        <li>
+          {% trans "Flow: Create in cloud -> Inject on board(s) -> Call (sync) or Start/Stop (async)." %}
+        </li>
+      </ul>
+    </div>
+
+    <div class="plugin-ide-workspace">
+      <aside class="plugin-ide-sidebar">
+        <h4>{% trans "Load a template" %}</h4>
+        <p class="plugin-ide-sidebar-lead text-muted">
+          {% trans "Click one template to replace the editor. Read the badge: it tells which Horizon action you will use after Inject." %}
+        </p>
+        <div class="list-group plugin-ide-snippet-list" id="plugin-ide-snippet-list">
+          <a href="#" class="list-group-item" data-snippet="worker">
+            <span class="snip-title">{% trans "1. Blank Worker" %}</span>
+            <span class="snip-badge snip-badge-neutral">{% trans "start here" %}</span>
+            <span class="snip-desc">{% trans "Minimal class Worker(Plugin.Plugin) + run(). Comments show sync vs async. You choose Callable after." %}</span>
+          </a>
+          <a href="#" class="list-group-item" data-snippet="hello">
+            <span class="snip-title">{% trans "2. Sync example (HelloName)" %}</span>
+            <span class="snip-badge snip-badge-sync">{% trans "Callable ON -> Call" %}</span>
+            <span class="snip-desc">{% trans "One-shot: after Inject use row action Call. run() builds Hello and returns it with q_result.put. Checks Callable ON." %}</span>
+          </a>
+          <a href="#" class="list-group-item" data-snippet="async">
+            <span class="snip-title">{% trans "3. Async example (loop)" %}</span>
+            <span class="snip-badge snip-badge-async">{% trans "Callable OFF -> Start/Stop" %}</span>
+            <span class="snip-desc">{% trans "Long-running: after Inject use Start, then Stop. run() loops while self._is_running. Unchecks Callable." %}</span>
+          </a>
+          <a href="#" class="list-group-item" data-snippet="result">
+            <span class="snip-title">{% trans "4. Sync return line (optional)" %}</span>
+            <span class="snip-badge snip-badge-insert">{% trans "for Callable ON only" %}</span>
+            <span class="snip-desc">{% trans "Paste at cursor inside run(). Lightning-Rod waits on a queue for Call; put(your_value) is how HelloName sends the string back to Horizon. Async Start/Stop does not need this." %}</span>
+          </a>
+        </div>
+        <div class="plugin-ide-snip-explain" id="plugin-ide-snip-explain" hidden>
+          <strong id="plugin-ide-snip-explain-title"></strong>
+          <p id="plugin-ide-snip-explain-body"></p>
+        </div>
+        {% if form.parameters %}
+        <h4>{% trans "JSON params" %}</h4>
+        <p class="plugin-ide-sidebar-lead text-muted">
+          {% trans "These only fill the parameters box (self.params on the board)." %}
+        </p>
+        <div class="list-group plugin-ide-snippet-list" id="plugin-ide-param-list">
+          <a href="#" class="list-group-item" data-param-snippet="hello">
+            <span class="snip-title">{"name": "World"}</span>
+            <span class="snip-desc">{% trans "For HelloName / sync Call." %}</span>
+          </a>
+          <a href="#" class="list-group-item" data-param-snippet="empty">
+            <span class="snip-title">{}</span>
+            <span class="snip-desc">{% trans "No parameters." %}</span>
+          </a>
+          <a href="#" class="list-group-item" data-param-snippet="async">
+            <span class="snip-title">{"message": "tick"}</span>
+            <span class="snip-desc">{% trans "For the async loop example." %}</span>
+          </a>
+        </div>
+        {% endif %}
+      </aside>
+
+      <section class="plugin-ide-editor-pane">
+        <div class="plugin-ide-toolbar">
+          <div class="btn-group btn-group-sm">
+            <button type="button" class="btn btn-default" id="plugin-ide-find" title="{% trans 'Find' %}">
+              <span class="fa fa-search"></span>
+            </button>
+            <button type="button" class="btn btn-default" id="plugin-ide-wrap" title="{% trans 'Word wrap' %}">
+              <span class="fa fa-text-width"></span>
+            </button>
+          </div>
+          <span class="plugin-ide-toolbar-label">{% trans "Python source" %}</span>
+          <span class="plugin-ide-active-snippet text-muted" id="plugin-ide-active-snippet"></span>
+        </div>
+        <div class="plugin-ide-code-shell">
+          {{ form.code }}
+        </div>
+        {% if form.code.errors %}<div class="text-danger small">{{ form.code.errors }}</div>{% endif %}
+
+        {% if form.parameters %}
+        <div class="plugin-ide-toolbar plugin-ide-toolbar-secondary">
+          <span class="plugin-ide-toolbar-label">{% trans "Default parameters (JSON)" %}</span>
+          <button type="button" class="btn btn-default btn-xs pull-right" id="plugin-ide-json-format">
+            {% trans "Format JSON" %}
+          </button>
+        </div>
+        <div class="plugin-ide-params-shell">
+          {{ form.parameters }}
+        </div>
+        {% if form.parameters.errors %}<div class="text-danger small">{{ form.parameters.errors }}</div>{% endif %}
+        {% endif %}
+      </section>
+    </div>
+  </form>
+
+  <div class="plugin-ide-statusbar">
+    <span id="plugin-ide-cursor">Ln 1, Col 1</span>
+    <span class="plugin-ide-status-sep">|</span>
+    <span id="plugin-ide-lines">0 lines</span>
+    <span class="plugin-ide-status-right text-muted" id="plugin-ide-mode-label">{% trans "Editor" %}</span>
+  </div>
+</div>
+
+<script src="{{ cm }}/codemirror.min.js"></script>
+<script src="{{ cm }}/mode/python/python.min.js"></script>
+<script src="{{ cm }}/mode/javascript/javascript.min.js"></script>
+<script src="{{ cm }}/addon/edit/closebrackets.min.js"></script>
+<script src="{{ cm }}/addon/edit/matchbrackets.min.js"></script>
+<script src="{{ cm }}/addon/selection/active-line.min.js"></script>
+<script src="{{ cm }}/addon/fold/foldcode.min.js"></script>
+<script src="{{ cm }}/addon/fold/foldgutter.min.js"></script>
+<script src="{{ cm }}/addon/fold/indent-fold.min.js"></script>
+<script src="{{ cm }}/addon/dialog/dialog.min.js"></script>
+<script src="{{ cm }}/addon/search/search.min.js"></script>
+<script src="{{ cm }}/addon/search/searchcursor.min.js"></script>
+<script src="{{ cm }}/addon/search/jump-to-line.min.js"></script>
+<script src="{{ cm }}/addon/hint/show-hint.min.js"></script>
+<script src="{{ cm }}/addon/hint/anyword-hint.min.js"></script>
+
+<script>
+(function() {
+  var SNIPPETS = {
+  "worker": {
+    "label": "Blank Worker",
+    "insert": false,
+    "callable": true,
+    "code": "from iotronic_lightningrod.modules.plugins import Plugin\nfrom oslo_log import log as logging\n\nLOG = logging.getLogger(__name__)\n\n\nclass Worker(Plugin.Plugin):\n    \"\"\"Keep class name Worker. Implement run(); do NOT define PluginStart/Call/Stop.\"\"\"\n\n    def __init__(self, uuid, name, q_result=None, params=None):\n        super(Worker, self).__init__(uuid, name, q_result, params)\n\n    def run(self):\n        LOG.info(\"params=%s\", self.params)\n        # Sync (Callable ON): compute once, then:\n        #   self.q_result.put(\"RESULT\")\n        # Async (Callable OFF): loop until Stop:\n        #   while self._is_running:\n        #       ...\n        #       time.sleep(1)\n        if self.q_result is not None:\n            self.q_result.put(\"ok\")\n",
+    "params": "{\n  \"name\": \"World\"\n}"
+  },
+  "hello": {
+    "label": "Sync HelloName",
+    "insert": false,
+    "callable": true,
+    "code": "from iotronic_lightningrod.modules.plugins import Plugin\nfrom oslo_log import log as logging\n\nLOG = logging.getLogger(__name__)\n\n\nclass Worker(Plugin.Plugin):\n    \"\"\"Synchronous plugin: register with Callable ON, then use Call (PluginCall).\"\"\"\n\n    def __init__(self, uuid, name, q_result, params=None):\n        super(Worker, self).__init__(uuid, name, q_result, params)\n\n    def run(self):\n        person = (self.params or {}).get(\"name\", \"User\")\n        message = \"Hello {0}\".format(person)\n        LOG.info(message)\n        self.q_result.put(message)\n",
+    "params": "{\n  \"name\": \"World\"\n}"
+  },
+  "async": {
+    "label": "Async loop",
+    "insert": false,
+    "callable": false,
+    "code": "from iotronic_lightningrod.modules.plugins import Plugin\nfrom oslo_log import log as logging\nimport time\n\nLOG = logging.getLogger(__name__)\n\n\nclass Worker(Plugin.Plugin):\n    \"\"\"Async plugin: register with Callable OFF, then use Start / Stop.\"\"\"\n\n    def __init__(self, uuid, name, q_result=None, params=None):\n        super(Worker, self).__init__(uuid, name, q_result, params)\n        self.counter = 0\n\n    def run(self):\n        message = (self.params or {}).get(\"message\", \"Hello from Worker\")\n        LOG.info(\"Plugin %s starting\", self.name)\n        while self._is_running:\n            self.counter += 1\n            LOG.info(\"[%s] %s\", self.counter, message)\n            time.sleep(1)\n        LOG.info(\"Plugin %s stopped\", self.name)\n",
+    "params": "{\n  \"message\": \"tick\"\n}"
+  },
+  "result": {
+    "label": "Sync return line",
+    "insert": true,
+    "code": "        # Sync / Call only: send the return value to Horizon (PluginCall waits on this queue).\n        # Example: after Call with {\"name\":\"Ada\"}, Horizon shows \"Hello Ada\".\n        if self.q_result is not None:\n            self.q_result.put(\"Hello Ada\")\n"
+  }
+};
+  var PARAM_SNIPPETS = {
+  "hello": "{\n  \"name\": \"World\"\n}",
+  "empty": "{}",
+  "async": "{\n  \"message\": \"tick\"\n}"
+};
+
+  var SNIP_EXPLAIN = {
+    worker: {
+      title: 'Blank Worker loaded',
+      body: 'Skeleton only. Next: pick Sync or Async template, or edit run() yourself. Then set Callable to match (ON=Call, OFF=Start/Stop), Create, Inject, run.'
+    },
+    hello: {
+      title: 'Sync HelloName loaded (Callable ON)',
+      body: 'After Create + Inject on a board: open the plugin row -> Call, pass {"name":"..."}. Horizon sends PluginCall; the board runs run() once and shows the Hello string from q_result.'
+    },
+    async: {
+      title: 'Async loop loaded (Callable OFF)',
+      body: 'After Create + Inject: row -> Start (PluginStart) to begin the while self._is_running loop; row -> Stop (PluginStop) to exit. No Call action for this type.'
+    },
+    result: {
+      title: 'Sync return line inserted (Callable / Call only)',
+      body: 'When you use Call, the cloud waits until the board puts a value on self.q_result. Example: self.q_result.put("Hello Ada"). That string is what Horizon shows as the Call result. Async plugins (Start/Stop) usually skip this; they just log/work in the loop. This button only inserts those lines at the cursor; it does not load a full plugin.'
+    }
+  };
+
+  var page = document.querySelector('.plugin-ide-page');
+  if (!page) return;
+
+  var codeTa = page.querySelector('textarea.plugin-ide-code-source');
+  var paramsTa = page.querySelector('textarea.plugin-ide-params-source');
+  var form = document.getElementById('{{ form_id|escapejs }}');
+  var statusMsg = page.querySelector('#plugin-ide-status-msg');
+  var activeLabel = page.querySelector('#plugin-ide-active-snippet');
+  var modeLabel = page.querySelector('#plugin-ide-mode-label');
+  var codeEditor = null;
+  var paramsEditor = null;
+  var readOnly = false;
+
+  function showStatus(text) {
+    if (!statusMsg) return;
+    statusMsg.textContent = text;
+    statusMsg.style.display = text ? 'block' : 'none';
+  }
+
+  function setActiveSnippet(key, name) {
+    if (activeLabel) activeLabel.textContent = name ? ('- ' + name) : '';
+    var list = page.querySelector('#plugin-ide-snippet-list');
+    if (list) {
+      Array.prototype.forEach.call(list.querySelectorAll('[data-snippet]'), function(el) {
+        el.classList.toggle('is-active', el.getAttribute('data-snippet') === key);
+      });
+    }
+    var box = page.querySelector('#plugin-ide-snip-explain');
+    var tEl = page.querySelector('#plugin-ide-snip-explain-title');
+    var bEl = page.querySelector('#plugin-ide-snip-explain-body');
+    var info = SNIP_EXPLAIN[key];
+    if (box && tEl && bEl && info) {
+      tEl.textContent = info.title;
+      bEl.textContent = info.body;
+      box.hidden = false;
+    }
+  }
+
+  function setCallable(flag) {
+    if (!form || flag === undefined || flag === null) return;
+    var box = form.querySelector('input[name="callable"]');
+    if (box && !box.disabled) box.checked = !!flag;
+  }
+
+  function getCodeValue() {
+    return codeEditor ? codeEditor.getValue() : (codeTa ? codeTa.value : '');
+  }
+
+  function setCodeValue(text) {
+    if (codeEditor) codeEditor.setValue(text);
+    else if (codeTa) codeTa.value = text;
+  }
+
+  function getParamsValue() {
+    return paramsEditor ? paramsEditor.getValue() : (paramsTa ? paramsTa.value : '');
+  }
+
+  function setParamsValue(text) {
+    if (paramsEditor) paramsEditor.setValue(text);
+    else if (paramsTa) paramsTa.value = text;
+  }
+
+  function syncFields() {
+    if (codeEditor && codeTa) codeTa.value = codeEditor.getValue();
+    if (paramsEditor && paramsTa) paramsTa.value = paramsEditor.getValue();
+  }
+
+  function updateStatus() {
+    if (!codeEditor) return;
+    var cur = codeEditor.getCursor();
+    var cursorEl = page.querySelector('#plugin-ide-cursor');
+    var linesEl = page.querySelector('#plugin-ide-lines');
+    if (cursorEl) cursorEl.textContent = 'Ln ' + (cur.line + 1) + ', Col ' + (cur.ch + 1);
+    if (linesEl) linesEl.textContent = codeEditor.lineCount() + ' lines';
+  }
+
+  function applySnippet(key) {
+    if (readOnly) return;
+    var snip = SNIPPETS[key];
+    if (!snip) return;
+    if (snip.insert && codeEditor) {
+      codeEditor.replaceSelection(snip.code);
+    } else if (snip.insert) {
+      if (codeTa) {
+        var start = codeTa.selectionStart || 0;
+        var val = codeTa.value || '';
+        codeTa.value = val.slice(0, start) + snip.code + val.slice(codeTa.selectionEnd || start);
+      }
+    } else {
+      setCodeValue(snip.code);
+    }
+    if (snip.params !== undefined) setParamsValue(snip.params);
+    if (Object.prototype.hasOwnProperty.call(snip, 'callable')) setCallable(snip.callable);
+    setActiveSnippet(key, snip.label);
+    syncFields();
+    if (codeEditor) { codeEditor.focus(); codeEditor.refresh(); updateStatus(); }
+  }
+
+  function initCodeMirror() {
+    if (!codeTa) return false;
+    readOnly = !!(codeTa.readOnly || codeTa.getAttribute('readonly') === 'readonly');
+
+    if (!window.CodeMirror) {
+      showStatus('CodeMirror not loaded - using plain text editor (still editable).');
+      if (modeLabel) modeLabel.textContent = 'Plain textarea';
+      codeTa.style.width = '100%';
+      codeTa.style.minHeight = '420px';
+      if (paramsTa) { paramsTa.style.width = '100%'; paramsTa.style.minHeight = '120px'; }
+      return false;
+    }
+
+    try {
+      codeEditor = CodeMirror.fromTextArea(codeTa, {
+        mode: 'python',
+        theme: 'material-darker',
+        readOnly: readOnly,
+        lineNumbers: true,
+        indentUnit: 4,
+        tabSize: 4,
+        indentWithTabs: false,
+        lineWrapping: false,
+        matchBrackets: true,
+        autoCloseBrackets: true,
+        styleActiveLine: true,
+        foldGutter: true,
+        gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter'],
+        extraKeys: {
+          Tab: function(cm) {
+            if (cm.somethingSelected()) cm.indentSelection('add');
+            else cm.replaceSelection('    ', 'end', '+input');
+          }
+        }
+      });
+      codeEditor.setSize('100%', 420);
+
+      if (paramsTa && !readOnly) {
+        paramsEditor = CodeMirror.fromTextArea(paramsTa, {
+          mode: { name: 'javascript', json: true },
+          theme: 'material-darker',
+          lineNumbers: true,
+          lineWrapping: true,
+          matchBrackets: true,
+          autoCloseBrackets: true,
+          tabSize: 2
+        });
+        paramsEditor.setSize('100%', 120);
+      }
+
+      codeEditor.on('cursorActivity', updateStatus);
+      codeEditor.on('change', syncFields);
+      if (paramsEditor) paramsEditor.on('change', syncFields);
+      updateStatus();
+      syncFields();
+      if (modeLabel) modeLabel.textContent = readOnly ? 'Read-only' : 'CodeMirror';
+      setTimeout(function() { codeEditor.refresh(); if (paramsEditor) paramsEditor.refresh(); }, 100);
+      return true;
+    } catch (err) {
+      showStatus('Editor init failed: ' + err.message);
+      codeTa.style.display = 'block';
+      return false;
+    }
+  }
+
+  function boot() {
+    initCodeMirror();
+
+    if (form) form.addEventListener('submit', syncFields);
+
+    var snipList = page.querySelector('#plugin-ide-snippet-list');
+    if (snipList) {
+      snipList.addEventListener('click', function(ev) {
+        var item = ev.target.closest('[data-snippet]');
+        if (!item) return;
+        ev.preventDefault();
+        applySnippet(item.getAttribute('data-snippet'));
+      });
+    }
+
+    var paramList = page.querySelector('#plugin-ide-param-list');
+    if (paramList) {
+      paramList.addEventListener('click', function(ev) {
+        var item = ev.target.closest('[data-param-snippet]');
+        if (!item) return;
+        ev.preventDefault();
+        var key = item.getAttribute('data-param-snippet');
+        setParamsValue(PARAM_SNIPPETS[key] || '{}');
+        syncFields();
+        if (paramsEditor) paramsEditor.focus();
+      });
+    }
+
+    var findBtn = page.querySelector('#plugin-ide-find');
+    if (findBtn) findBtn.addEventListener('click', function() {
+      if (codeEditor) codeEditor.execCommand('find');
+    });
+
+    var wrapBtn = page.querySelector('#plugin-ide-wrap');
+    if (wrapBtn) wrapBtn.addEventListener('click', function() {
+      if (!codeEditor) return;
+      codeEditor.setOption('lineWrapping', !codeEditor.getOption('lineWrapping'));
+      codeEditor.refresh();
+    });
+
+    var jsonBtn = page.querySelector('#plugin-ide-json-format');
+    if (jsonBtn) jsonBtn.addEventListener('click', function() {
+      try {
+        var parsed = JSON.parse(getParamsValue() || '{}');
+        setParamsValue(JSON.stringify(parsed, null, 2));
+        syncFields();
+      } catch (e) {
+        alert('Invalid JSON: ' + e.message);
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})();
+</script>
+<style>
+  .plugin-ide-page {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 24px;
+    color: #e2e8f0;
+  }
+  .plugin-ide-topbar {
+    padding: 14px 18px;
+    background: linear-gradient(180deg, #1e293b 0%, #172033 100%);
+    border-bottom: 1px solid #334155;
+  }
+  .plugin-ide-title { margin: 0 0 4px; color: #f8fafc; font-weight: 600; }
+  .plugin-ide-subtitle { margin: 0; font-size: 12px; }
+  .plugin-ide-top-actions .btn { margin-left: 6px; }
+  .plugin-ide-form { padding: 0 18px 12px; }
+  .plugin-ide-meta-row {
+    padding: 12px 0 8px;
+    border-bottom: 1px solid #334155;
+    margin-bottom: 12px;
+  }
+  .plugin-ide-meta-row label { color: #cbd5e1; font-size: 12px; }
+  .plugin-ide-meta-row .form-control {
+    background: #111827;
+    border-color: #475569;
+    color: #f1f5f9;
+  }
+  .plugin-ide-meta-row .checkbox label { color: #cbd5e1; }
+  .plugin-ide-callable-help {
+    color: #94a3b8 !important;
+    font-size: 11px;
+    margin: 4px 0 0;
+    line-height: 1.35;
+  }
+  .plugin-ide-guide {
+    background: #111827;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    line-height: 1.45;
+    color: #cbd5e1;
+  }
+  .plugin-ide-guide strong { color: #f8fafc; }
+  .plugin-ide-guide-list {
+    margin: 8px 0 0;
+    padding-left: 18px;
+  }
+  .plugin-ide-guide-list li { margin-bottom: 4px; }
+  .plugin-ide-workspace { display: flex; gap: 12px; min-height: 480px; }
+  .plugin-ide-sidebar {
+    width: 280px;
+    flex-shrink: 0;
+    background: #111827;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 10px;
+  }
+  .plugin-ide-sidebar h4 {
+    margin: 12px 0 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #94a3b8;
+  }
+  .plugin-ide-sidebar h4:first-child { margin-top: 0; }
+  .plugin-ide-sidebar-lead {
+    margin: 0 0 8px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .plugin-ide-snip-explain {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: #0b1220;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #cbd5e1;
+  }
+  .plugin-ide-snip-explain strong {
+    display: block;
+    color: #f8fafc;
+    margin-bottom: 4px;
+  }
+  .plugin-ide-snip-explain p { margin: 0; }
+  .plugin-ide-snippet-list .list-group-item {
+    background: #0f172a;
+    border-color: #334155;
+    color: #e2e8f0;
+    padding: 10px;
+    font-size: 12px;
+    cursor: pointer;
+    display: block;
+    margin-bottom: 6px;
+    border-radius: 6px;
+  }
+  .plugin-ide-snippet-list .list-group-item:hover,
+  .plugin-ide-snippet-list .list-group-item.is-active {
+    background: #1e293b;
+    color: #fff;
+    text-decoration: none;
+    border-color: #64748b;
+  }
+  .plugin-ide-snippet-list .snip-title {
+    display: block;
+    font-weight: 600;
+    color: #f8fafc;
+    margin-bottom: 4px;
+  }
+  .plugin-ide-snippet-list .snip-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 6px;
+  }
+  .snip-badge-sync { background: #14532d; color: #bbf7d0; }
+  .snip-badge-async { background: #1e3a5f; color: #bfdbfe; }
+  .snip-badge-insert { background: #422006; color: #fde68a; }
+  .snip-badge-neutral { background: #334155; color: #e2e8f0; }
+  .plugin-ide-snippet-list .snip-desc {
+    display: block;
+    font-size: 11px;
+    line-height: 1.35;
+    color: #94a3b8;
+    font-weight: 400;
+  }
+  .plugin-ide-editor-pane { flex: 1; min-width: 0; }
+  .plugin-ide-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-bottom: 0;
+    border-radius: 6px 6px 0 0;
+  }
+  .plugin-ide-toolbar-secondary { margin-top: 10px; border-radius: 6px 6px 0 0; }
+  .plugin-ide-toolbar-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+  }
+  .plugin-ide-active-snippet { font-size: 11px; margin-left: 4px; }
+  .plugin-ide-code-shell,
+  .plugin-ide-params-shell {
+    border: 1px solid #334155;
+    border-radius: 0 0 6px 6px;
+    overflow: hidden;
+  }
+  .plugin-ide-code-shell .CodeMirror,
+  .plugin-ide-params-shell .CodeMirror {
+    font-family: "DejaVu Sans Mono", "Consolas", "Monaco", monospace;
+    font-size: 13px;
+    height: auto;
+  }
+  .plugin-ide-code-shell textarea.plugin-ide-code-source,
+  .plugin-ide-params-shell textarea.plugin-ide-params-source {
+    width: 100%;
+    background: #0b1220;
+    color: #cbd5e1;
+    border: 0;
+  }
+  .plugin-ide-statusbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: #0b1220;
+    border-top: 1px solid #334155;
+    font-size: 11px;
+    color: #94a3b8;
+    font-family: monospace;
+  }
+  .plugin-ide-status-right { margin-left: auto; }
+</style>
+
+{% endwith %}

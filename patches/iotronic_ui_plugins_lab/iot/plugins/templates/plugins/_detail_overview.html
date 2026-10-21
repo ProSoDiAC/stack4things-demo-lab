@@ -1,0 +1,41 @@
+{% load i18n sizeformat %}
+
+<div class="detail">
+  <dl class="dl-horizontal">
+    <dt>{% trans "Name" %}</dt>
+    <dd>{{ plugin.name }}</dd>
+    <dt>{% trans "ID" %}</dt>
+    <dd>{{ plugin.uuid }}</dd>
+    <dt>{% trans "Public" %}</dt>
+    <dd>{{ plugin.public }}</dd>
+    <dt>{% trans "Callable" %}</dt>
+    <dd>
+      {{ plugin.callable }}
+      {% if plugin.callable %}
+        <span class="text-muted"> - {% trans "sync: use Call (PluginCall); implement run() + q_result.put" %}</span>
+      {% else %}
+        <span class="text-muted"> - {% trans "async: use Start/Stop; loop while self._is_running in run()" %}</span>
+      {% endif %}
+    </dd>
+    <dt>{% trans "Execution model" %}</dt>
+    <dd class="text-muted">
+      {% trans "Required: class Worker(Plugin.Plugin) and def run(self). PluginStart/Call/Stop are Horizon RPCs, not Worker methods." %}
+    </dd>
+    <dt class="plugin-code-dt">{% trans "Code" %}</dt>
+    <dd class="plugin-code-dd">{% include "iot/plugins/_plugin_code_viewer.html" %}</dd>
+  </dl>
+</div>
+
+<style>
+  .detail dl.dl-horizontal dt.plugin-code-dt,
+  .detail dl.dl-horizontal dd.plugin-code-dd {
+    float: none;
+    width: 100%;
+    margin-left: 0;
+    text-align: left;
+  }
+  .detail dl.dl-horizontal dd.plugin-code-dd {
+    clear: both;
+    padding-top: 4px;
+  }
+</style>

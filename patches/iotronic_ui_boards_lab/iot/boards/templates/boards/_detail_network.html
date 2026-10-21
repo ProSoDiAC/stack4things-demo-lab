@@ -1,0 +1,147 @@
+{% load i18n %}
+
+<div class="detail board-network-view">
+  <p class="help-block">
+    {% blocktrans %}
+    Live network view from the Lightning-Rod container (interfaces, addresses, routes, DNS).
+    {% endblocktrans %}
+  </p>
+
+  {% if network.error and not network.interfaces %}
+    <div class="alert alert-warning">{{ network.error }}</div>
+  {% endif %}
+
+  <h4>{% trans "Container" %}</h4>
+  <hr class="header_rule">
+  <dl class="dl-horizontal">
+    <dt>{% trans "Hostname" %}</dt>
+    <dd>{{ network.hostname|default:"--" }}</dd>
+    <dt>{% trans "LR container" %}</dt>
+    <dd>{{ network.container|default:"--" }}</dd>
+    <dt>{% trans "LR UI ports" %}</dt>
+    <dd>
+      {% if network.host_ports %}
+        {% for p in network.host_ports %}{{ p }}{% if not forloop.last %}, {% endif %}{% endfor %}
+      {% else %}
+        --
+      {% endif %}
+    </dd>
+  </dl>
+
+  <h4>{% trans "Interfaces" %}</h4>
+  <hr class="header_rule">
+  {% if network.interfaces %}
+    <table class="table table-striped table-bordered table-condensed">
+      <thead>
+        <tr>
+          <th>{% trans "Name" %}</th>
+          <th>{% trans "State" %}</th>
+          <th>{% trans "MAC" %}</th>
+          <th>{% trans "MTU" %}</th>
+          <th>{% trans "IPv4" %}</th>
+          <th>{% trans "IPv6" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for iface in network.interfaces %}
+          <tr>
+            <td><strong>{{ iface.name }}</strong></td>
+            <td>{{ iface.state|default:"--" }}</td>
+            <td><code>{{ iface.mac|default:"--" }}</code></td>
+            <td>{{ iface.mtu|default:"--" }}</td>
+            <td>
+              {% if iface.ipv4 %}
+                {% for a in iface.ipv4 %}
+                  <div><code>{{ a.addr }}/{{ a.prefix }}</code>
+                    {% if a.broadcast %}<span class="text-muted">brd {{ a.broadcast }}</span>{% endif %}
+                    {% if a.scope %}<span class="text-muted">({{ a.scope }})</span>{% endif %}
+                  </div>
+                {% endfor %}
+              {% else %}
+                --
+              {% endif %}
+            </td>
+            <td>
+              {% if iface.ipv6 %}
+                {% for a in iface.ipv6 %}
+                  <div><code>{{ a.addr }}/{{ a.prefix }}</code>
+                    {% if a.scope %}<span class="text-muted">({{ a.scope }})</span>{% endif %}
+                  </div>
+                {% endfor %}
+              {% else %}
+                --
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="text-muted">{% trans "No interface data." %}</p>
+    {% if network.raw_ip_addr %}
+      <pre style="max-height:240px; overflow:auto;">{{ network.raw_ip_addr }}</pre>
+    {% endif %}
+  {% endif %}
+
+  <h4>{% trans "Routes" %}</h4>
+  <hr class="header_rule">
+  {% if network.routes %}
+    <table class="table table-striped table-bordered table-condensed">
+      <thead>
+        <tr>
+          <th>{% trans "Destination" %}</th>
+          <th>{% trans "Gateway" %}</th>
+          <th>{% trans "Device" %}</th>
+          <th>{% trans "Source" %}</th>
+          <th>{% trans "Metric" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in network.routes %}
+          <tr>
+            <td><code>{{ r.dst }}</code></td>
+            <td>{% if r.gateway %}<code>{{ r.gateway }}</code>{% else %}--{% endif %}</td>
+            <td>{{ r.dev|default:"--" }}</td>
+            <td>{% if r.prefsrc %}<code>{{ r.prefsrc }}</code>{% else %}--{% endif %}</td>
+            <td>{{ r.metric|default:"--" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="text-muted">{% trans "No route data." %}</p>
+    {% if network.raw_routes %}
+      <pre style="max-height:160px; overflow:auto;">{{ network.raw_routes }}</pre>
+    {% endif %}
+  {% endif %}
+
+  <h4>{% trans "DNS" %}</h4>
+  <hr class="header_rule">
+  <dl class="dl-horizontal">
+    <dt>{% trans "Nameservers" %}</dt>
+    <dd>
+      {% if network.dns %}
+        {% for d in network.dns %}<code>{{ d }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}
+      {% else %}
+        --
+      {% endif %}
+    </dd>
+  </dl>
+
+  {% if network_ajax_url %}
+  <p>
+    <button type="button" class="btn btn-default btn-sm" id="board-network-refresh">
+      {% trans "Refresh" %}
+    </button>
+  </p>
+  <script>
+  (function() {
+    var btn = document.getElementById('board-network-refresh');
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+      window.location.reload();
+    });
+  })();
+  </script>
+  {% endif %}
+</div>

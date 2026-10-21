@@ -1,0 +1,9 @@
+{% extends "horizon/common/_modal_form.html" %}
+{% load i18n %}
+
+{% block modal-body-right %}
+  <h3>{% trans "Description:" %}</h3>
+  <p>{% trans "Call a synchronous (Callable) plugin on board(s)." %}</p>
+  <p>{% trans "Sends PluginCall RPC. The board runs Worker.run() once and returns the value from self.q_result.put(...)." %}</p>
+  <p class="text-muted">{% trans "For async plugins (Callable off) use Start / Stop instead." %}</p>
+{% endblock %}

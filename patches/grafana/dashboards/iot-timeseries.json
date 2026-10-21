@@ -1,0 +1,123 @@
+{
+  "uid": "s4t-iot-metrics",
+  "title": "S4T IoT Metrics",
+  "tags": ["iot", "s4t", "metrics"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      {
+        "name": "measurement",
+        "type": "query",
+        "datasource": "InfluxDB",
+        "query": "SHOW MEASUREMENTS",
+        "refresh": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {"text": "environmental_data", "value": "environmental_data"}
+      },
+      {
+        "name": "board",
+        "type": "query",
+        "datasource": "InfluxDB",
+        "query": "SHOW TAG VALUES FROM \"$measurement\" WITH KEY = \"board\"",
+        "refresh": 1,
+        "includeAll": true,
+        "multi": false,
+        "current": {"text": "All", "value": "$__all"}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Temperature (°C)",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "id": 1,
+      "datasource": "InfluxDB",
+      "targets": [
+        {
+          "refId": "A",
+          "measurement": "$measurement",
+          "tags": [{"key": "board", "operator": "=", "value": "$board"}],
+          "groupBy": [{"type": "time", "params": ["$__interval"]}],
+          "select": [
+            [
+              {"type": "field", "params": ["Temperature"]},
+              {"type": "mean", "params": []}
+            ]
+          ],
+          "orderByTime": "ASC"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Humidity (%)",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "id": 2,
+      "datasource": "InfluxDB",
+      "targets": [
+        {
+          "refId": "B",
+          "measurement": "$measurement",
+          "tags": [{"key": "board", "operator": "=", "value": "$board"}],
+          "groupBy": [{"type": "time", "params": ["$__interval"]}],
+          "select": [
+            [
+              {"type": "field", "params": ["Humidity"]},
+              {"type": "mean", "params": []}
+            ]
+          ],
+          "orderByTime": "ASC"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "PM10 (μg/m³)",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "id": 3,
+      "datasource": "InfluxDB",
+      "targets": [
+        {
+          "refId": "C",
+          "measurement": "$measurement",
+          "tags": [{"key": "board", "operator": "=", "value": "$board"}],
+          "groupBy": [{"type": "time", "params": ["$__interval"]}],
+          "select": [
+            [
+              {"type": "field", "params": ["PM10"]},
+              {"type": "mean", "params": []}
+            ]
+          ],
+          "orderByTime": "ASC"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Wind Speed (m/s)",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "id": 4,
+      "datasource": "InfluxDB",
+      "targets": [
+        {
+          "refId": "D",
+          "measurement": "$measurement",
+          "tags": [{"key": "board", "operator": "=", "value": "$board"}],
+          "groupBy": [{"type": "time", "params": ["$__interval"]}],
+          "select": [
+            [
+              {"type": "field", "params": ["Wind_speed"]},
+              {"type": "mean", "params": []}
+            ]
+          ],
+          "orderByTime": "ASC"
+        }
+      ]
+    }
+  ]
+}

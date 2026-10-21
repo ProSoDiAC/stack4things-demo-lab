@@ -1,0 +1,610 @@
+# Stack4Things (IoTronic) demo lab — single self-contained compose file.
+#
+#   ./lab up         # build + start everything, wait until healthy
+#   ./lab bootstrap  # create boards, plugins, services, demo data (idempotent)
+#   ./lab verify     # health report (and self-heal)
+#
+# Derived from the AssemblingSmartCPS ch13 deployment plus the lab overlay; see README.md.
+
+name: ${COMPOSE_PROJECT_NAME:-s4t}
+
+x-restart: &restart
+  restart: unless-stopped
+
+x-lr: &lr
+  <<: *restart
+  image: ${IMG_LR}
+  privileged: true
+  stdin_open: true
+  tty: true
+  networks: [s4t]
+  entrypoint: ["/bin/bash", "/opt/s4t-lab/lr-entrypoint.sh"]
+  depends_on:
+    crossbar:
+      condition: service_started
+    iotronic-wstun:
+      condition: service_started
+  environment:
+    LAB_SSHD: ${LAB_SSHD:-1}
+    LAB_SSH_PASSWORD: ${LAB_SSH_PASSWORD:-arancino}
+
+services:
+
+  # ---------------------------------------------------------------- PKI
+  # Root CA + Crossbar certificate, generated once into the shared volume.
+  # (upstream used debian:buster, whose apt repositories are gone)
+  ca_service:
+    <<: *restart
+    image: ${IMG_ALPINE}
+    container_name: ca_service
+    networks: [s4t]
+    volumes:
+      - iotronic_ssl:/etc/ssl/iotronic
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        apk add --no-cache openssl >/dev/null
+        mkdir -p /etc/ssl/iotronic && cd /etc/ssl/iotronic
+        if [ -f crossbar.pem ] && [ -f crossbar.key ] && [ -f iotronic_CA.pem ]; then
+          echo "[ca] certificates already present"
+        else
+          echo "[ca] generating root CA and Crossbar certificate"
+          openssl genrsa -out iotronic_CA.key 2048
+          openssl req -x509 -new -nodes -key iotronic_CA.key -sha256 -days 18250 \
+            -subj "/C=IT/O=iotronic" -out iotronic_CA.pem
+          openssl genrsa -out crossbar.key 2048
+          openssl req -new -key crossbar.key -subj "/C=IT/O=iotronic/CN=crossbar" -out crossbar.csr
+          openssl x509 -req -in crossbar.csr -CA iotronic_CA.pem -CAkey iotronic_CA.key \
+            -CAcreateserial -out crossbar.pem -days 18250 -sha256
+          chmod 644 iotronic_CA.key iotronic_CA.pem crossbar.key crossbar.pem
+          chmod 755 /etc/ssl/iotronic
+        fi
+        touch /tmp/ca-ready
+        exec tail -f /dev/null
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/ca-ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  # ---------------------------------------------------------------- WAMP router + WSTUN
+  crossbar:
+    <<: *restart
+    image: ${IMG_CROSSBAR}
+    container_name: crossbar
+    networks: [s4t]
+    depends_on:
+      ca_service:
+        condition: service_healthy
+    ports:
+      - "${BIND_PUBLIC:-0.0.0.0}:8181:8181"
+    volumes:
+      - iotronic_ssl:/node/.crossbar/ssl
+      - crossbar_data:/node/.crossbar
+      - ./conf/crossbar/config.json:/node/.crossbar/config.json:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while [ ! -f /node/.crossbar/ssl/crossbar.pem ] || [ ! -f /node/.crossbar/ssl/crossbar.key ]; do sleep 2; done
+        exec crossbar start --cbdir /node/.crossbar
+
+  iotronic-wstun:
+    <<: *restart
+    image: ${IMG_WSTUN}
+    container_name: iotronic-wstun
+    networks: [s4t]
+    depends_on:
+      ca_service:
+        condition: service_healthy
+    ports:
+      - "${BIND_PUBLIC:-0.0.0.0}:8080:8080"
+      - "${BIND_PUBLIC:-0.0.0.0}:50001-50100:50001-50100"
+    volumes:
+      - iotronic_ssl:/var/lib/iotronic/ssl
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while [ ! -e /var/lib/iotronic/ssl/iotronic_CA.pem ] || [ ! -e /var/lib/iotronic/ssl/crossbar.key ]; do sleep 2; done
+        exec node /usr/local/lib/node_modules/@mdslab/wstun/bin/wstun.js -r -s 8080 --ssl=true \
+          --key=/var/lib/iotronic/ssl/iotronic_CA.key --cert=/var/lib/iotronic/ssl/iotronic_CA.pem
+
+  # ---------------------------------------------------------------- data stores
+  iotronic-db:
+    <<: *restart
+    image: ${IMG_MARIADB}
+    container_name: iotronic-db
+    networks: [s4t]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-unime}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-unime}
+      MYSQL_USER: ${MYSQL_USER:-admin}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-s4t}
+    command:
+      - --bind-address=0.0.0.0
+      - --max_connections=4096
+      - --collation-server=utf8_general_ci
+      - --character-set-server=utf8
+      - --innodb-buffer-pool-size=1G
+      - --innodb-flush-log-at-trx-commit=1
+      - --innodb-file-per-table=1
+    ports:
+      - "${BIND_INTERNAL:-127.0.0.1}:3306:3306"
+    volumes:
+      - unime_iotronic_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  rabbitmq:
+    <<: *restart
+    image: ${IMG_RABBITMQ}
+    container_name: rabbitmq
+    networks: [s4t]
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-openstack}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-unime}
+    ports:
+      - "${BIND_INTERNAL:-127.0.0.1}:5672:5672"
+      - "${BIND_INTERNAL:-127.0.0.1}:15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  # ---------------------------------------------------------------- OpenStack / IoTronic control plane
+  keystone:
+    <<: *restart
+    image: ${IMG_KEYSTONE}
+    container_name: keystone
+    init: true
+    networks: [s4t]
+    depends_on:
+      iotronic-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      DB_HOST: iotronic-db
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-unime}
+      ADMIN_PASS: ${ADMIN_PASS:-s4t}
+      IOTRONIC_PASS: ${IOTRONIC_PASS:-unime}
+      KEYSTONE_DBPASS: ${KEYSTONE_DBPASS:-unime}
+      REGION_NAME: RegionOne
+    ports:
+      - "${BIND_INTERNAL:-127.0.0.1}:5000:5000"
+    volumes:
+      - ./entrypoints:/opt/lab:ro
+      - keystone_fernet:/etc/keystone/fernet-keys
+      - keystone_credentials:/etc/keystone/credential-keys
+      - keystone_logs:/var/log/keystone
+      - keystone_apache_logs:/var/log/apache2
+    command: ["/bin/bash", "/opt/lab/keystone-entrypoint.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/keystone-setup-done && curl -sf http://localhost:5000/v3 >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 60s
+
+  iotronic-conductor:
+    <<: *restart
+    image: ${IMG_CONDUCTOR}
+    container_name: iotronic-conductor
+    hostname: iotronic-conductor      # stable name: the conductor registers itself in the DB by hostname
+    init: true
+    networks: [s4t]
+    depends_on:
+      iotronic-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      keystone:
+        condition: service_healthy
+    environment:
+      DB_HOST: iotronic-db
+      IOTRONIC_DBPASS: ${IOTRONIC_PASS:-unime}
+    ports:
+      - "${BIND_INTERNAL:-127.0.0.1}:8812:8812"
+    volumes:
+      - ./conf/conductor:/etc/iotronic
+      - ./entrypoints:/opt/lab:ro
+      # lab fix: Python 3 "except exception:" bug that broke deleting an online board
+      - ./patches/iotronic_conductor_endpoints.py:/usr/local/lib/python3.6/dist-packages/iotronic/conductor/endpoints.py:ro
+      - iotronic_logs:/var/log/iotronic
+    command: ["/bin/bash", "/opt/lab/conductor-entrypoint.sh"]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('localhost', 8812), 3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 40s
+
+  iotronic-wagent:
+    <<: *restart
+    image: ${IMG_WAGENT}
+    container_name: iotronic-wagent
+    hostname: iotronic-wagent         # stable name: boards are bound to the agent registered under this name
+    init: true
+    networks: [s4t]
+    depends_on:
+      iotronic-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      crossbar:
+        condition: service_started
+      iotronic-conductor:
+        condition: service_healthy
+    volumes:
+      - ./conf/wagent:/etc/iotronic
+      - ./entrypoints:/opt/lab:ro
+      - iotronic_logs:/var/log/iotronic
+    command: ["/bin/bash", "/opt/lab/wagent-entrypoint.sh"]
+
+  iotronic-ui:
+    <<: *restart
+    image: ${IMG_UI}
+    container_name: iotronic-ui
+    networks: [s4t]
+    depends_on:
+      iotronic-db:
+        condition: service_healthy
+      keystone:
+        condition: service_healthy
+    ports:
+      - "${BIND_PUBLIC:-0.0.0.0}:80:80"
+    entrypoint: ["/bin/bash", "/opt/lab/ui-entrypoint.sh"]
+    environment:
+      FL_DASHBOARD_URL: "http://fl-control:8090/"
+      FL_DASHBOARD_PROXY_PATH: "/horizon/fl-live/"
+      FL_CONTROL_URL: "http://fl-control:8091"
+      FL_PORT: "8087"
+      FL_DOCKER_GW: "fl-control"
+      FL_PLUGIN_SOURCE: "/opt/fl_lab/fl_client_plugin.py"
+      FL_LAB_CONFIG: "/opt/fl_lab_run/lab_config.json"
+      LR_LOG_PROXY_URL: "http://lr-log-proxy:8092"
+      METRICS_SERVER_URL: "http://metrics-gateway:8093"
+      IOT_METRICS_PROXY_PATH: "/horizon/metrics-live/"
+    healthcheck:
+      test: ["CMD", "python2.7", "-c", "import urllib2; urllib2.urlopen('http://localhost/horizon/auth/login/', timeout=5)"]
+      interval: 15s
+      timeout: 8s
+      retries: 10
+      start_period: 40s
+    volumes:
+      - ./entrypoints/ui-entrypoint.sh:/opt/lab/ui-entrypoint.sh:ro
+      - iotronic-ui_logs:/var/log/apache2
+      - ./conf/ui:/etc/openstack-dashboard
+      # --- lab patches: panels (fleets, boards, plugins IDE, FL, metrics, WoT), English-only UI
+      - ./patches/iotronic_ui_lab/iotronic_ui_lab:/usr/local/lib/python2.7/dist-packages/iotronic_ui_lab:ro
+      - ./patches/iotronic_ui_fleets_lab/iot/fleets:/usr/local/lib/python2.7/dist-packages/iotronic_ui/iot/fleets:ro
+      - ./patches/iotronic_ui_boards_lab/iot/boards:/usr/local/lib/python2.7/dist-packages/iotronic_ui/iot/boards:ro
+      - ./patches/iotronic_ui_plugins_lab/iot/plugins:/usr/local/lib/python2.7/dist-packages/iotronic_ui/iot/plugins:ro
+      - ./patches/iotronic_ui_plugins_lab/static/plugin_ide:/var/lib/openstack-dashboard/static/plugin_ide:ro
+      - ./patches/horizon-enabled/_6060_iot_federated_learning_panel.py:/usr/share/openstack-dashboard/openstack_dashboard/enabled/_6060_iot_federated_learning_panel.py:ro
+      - ./patches/horizon-enabled/_6070_iot_metrics_panel.py:/usr/share/openstack-dashboard/openstack_dashboard/enabled/_6070_iot_metrics_panel.py:ro
+      - ./patches/horizon-enabled/_6080_iot_wot_panel.py:/usr/share/openstack-dashboard/openstack_dashboard/enabled/_6080_iot_wot_panel.py:ro
+      - ./patches/horizon-enabled/_6040_hide_webservices.py:/usr/share/openstack-dashboard/openstack_dashboard/enabled/_6040_iot_webservices_panel.py:ro
+      - ./patches/iotronic_ui_webservices_panel_stub.py:/usr/local/lib/python2.7/dist-packages/iotronic_ui/iot/webservices/panel.py:ro
+      - ./patches/iotronic_ui_webservices_panel_stub.py:/opt/build/iotronic-ui/iotronic_ui/iot/webservices/panel.py:ro
+      - ./patches/iotronic_ui_dashboard_lab.py:/opt/build/iotronic-ui/iotronic_ui/iot/dashboard.py:ro
+      - ./patches/iotronic_ui_dashboard_lab.py:/usr/local/lib/python2.7/dist-packages/iotronic_ui/iot/dashboard.py:ro
+      - ./patches/horizon-enabled/_6040_hide_webservices.py:/usr/local/lib/python2.7/dist-packages/iotronic_ui/enabled/_6040_iot_webservices_panel.py:ro
+      - ./patches/horizon-enabled/_6040_hide_webservices.py:/opt/build/iotronic-ui/iotronic_ui/enabled/_6040_iot_webservices_panel.py:ro
+      - ./patches/horizon-local-settings-en.py:/usr/share/openstack-dashboard/openstack_dashboard/local/local_settings.d/99-lab-en.py:ro
+      - ./patches/lab_force_en.py:/usr/local/lib/python2.7/dist-packages/lab_force_en.py:ro
+      - ./experiments/federated-learning/fl_client_plugin.py:/opt/fl_lab/fl_client_plugin.py:ro
+      - ./experiments/federated-learning/.run:/opt/fl_lab_run:rw
+      - ./patches/apache-fl-live-proxy.conf:/etc/apache2/conf-available/fl-live-proxy.conf:ro
+      - ./patches/apache-metrics-live-proxy.conf:/etc/apache2/conf-available/metrics-live-proxy.conf:ro
+
+  # ---------------------------------------------------------------- Lightning-Rod boards (virtual)
+  # alpha also hosts the demo web services (weather API, WoT Fritzing) and the metrics/FL datasets.
+  lightning-rod:
+    <<: *lr
+    container_name: lightning-rod
+    ports:
+      - "${BIND_PUBLIC:-0.0.0.0}:1474:1474"
+    environment:
+      LAB_SSHD: ${LAB_SSHD:-1}
+      LAB_SSH_PASSWORD: ${LAB_SSH_PASSWORD:-arancino}
+      LAB_DEMO_SERVICES: "1"
+    volumes:
+      - lr_var:/var/lib/iotronic
+      - lr_le:/etc/letsencrypt
+      - lr_nginx:/etc/nginx
+      - lr_confs:/etc/iotronic
+      - lr_data:/opt/data
+      - lr_fl_python:/opt/fl-python
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./entrypoints:/opt/s4t-lab:ro
+      - ./experiments/metrics/s4t_metrics.py:/opt/lab/s4t_metrics.py:ro
+      - ./experiments/federated-learning/opt-fl:/opt/fl:ro
+      - ./vendor/ch14/weather_web_server.py:/opt/s4t-demo/weather_web_server.py:ro
+      - ./experiments/webservices/wot-fritzing:/opt/s4t-demo/wot-fritzing:ro
+
+  lightning-rod-2:
+    <<: *lr
+    container_name: lightning-rod-2
+    ports:
+      - "${BIND_PUBLIC:-0.0.0.0}:1475:1474"
+    volumes:
+      - lr2_var:/var/lib/iotronic
+      - lr2_le:/etc/letsencrypt
+      - lr2_nginx:/etc/nginx
+      - lr2_confs:/etc/iotronic
+      - lr2_data:/opt/data
+      - lr_fl_python:/opt/fl-python
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./entrypoints:/opt/s4t-lab:ro
+      - ./experiments/metrics/s4t_metrics.py:/opt/lab/s4t_metrics.py:ro
+      - ./experiments/federated-learning/opt-fl:/opt/fl:ro
+
+  lightning-rod-3:
+    <<: *lr
+    container_name: lightning-rod-3
+    ports:
+      - "${BIND_PUBLIC:-0.0.0.0}:1476:1474"
+    volumes:
+      - lr3_var:/var/lib/iotronic
+      - lr3_le:/etc/letsencrypt
+      - lr3_nginx:/etc/nginx
+      - lr3_confs:/etc/iotronic
+      - lr3_data:/opt/data
+      - lr_fl_python:/opt/fl-python
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./entrypoints:/opt/s4t-lab:ro
+      - ./experiments/metrics/s4t_metrics.py:/opt/lab/s4t_metrics.py:ro
+      - ./experiments/federated-learning/opt-fl:/opt/fl:ro
+
+  lightning-rod-4:
+    <<: *lr
+    container_name: lightning-rod-4
+    ports:
+      - "${BIND_PUBLIC:-0.0.0.0}:1477:1474"
+    volumes:
+      - lr4_var:/var/lib/iotronic
+      - lr4_le:/etc/letsencrypt
+      - lr4_nginx:/etc/nginx
+      - lr4_confs:/etc/iotronic
+      - lr4_data:/opt/data
+      - lr_fl_python:/opt/fl-python
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./entrypoints:/opt/s4t-lab:ro
+      - ./experiments/metrics/s4t_metrics.py:/opt/lab/s4t_metrics.py:ro
+
+  lightning-rod-5:
+    <<: *lr
+    container_name: lightning-rod-5
+    ports:
+      - "${BIND_PUBLIC:-0.0.0.0}:1478:1474"
+    volumes:
+      - lr5_var:/var/lib/iotronic
+      - lr5_le:/etc/letsencrypt
+      - lr5_nginx:/etc/nginx
+      - lr5_confs:/etc/iotronic
+      - lr5_data:/opt/data
+      - lr_fl_python:/opt/fl-python
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./entrypoints:/opt/s4t-lab:ro
+      - ./experiments/metrics/s4t_metrics.py:/opt/lab/s4t_metrics.py:ro
+
+  lightning-rod-6:
+    <<: *lr
+    container_name: lightning-rod-6
+    ports:
+      - "${BIND_PUBLIC:-0.0.0.0}:1479:1474"
+    volumes:
+      - lr6_var:/var/lib/iotronic
+      - lr6_le:/etc/letsencrypt
+      - lr6_nginx:/etc/nginx
+      - lr6_confs:/etc/iotronic
+      - lr6_data:/opt/data
+      - lr_fl_python:/opt/fl-python
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./entrypoints:/opt/s4t-lab:ro
+      - ./experiments/metrics/s4t_metrics.py:/opt/lab/s4t_metrics.py:ro
+
+  # ---------------------------------------------------------------- metrics (Module C)
+  influxdb:
+    <<: *restart
+    image: ${IMG_INFLUXDB}
+    container_name: influxdb
+    networks: [s4t]
+    environment:
+      INFLUXDB_HTTP_AUTH_ENABLED: "true"
+      INFLUXDB_ADMIN_USER: ${INFLUXDB_ADMIN_USER:-admin}
+      INFLUXDB_ADMIN_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD:-admin}
+    ports:
+      - "${BIND_INTERNAL:-127.0.0.1}:8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8086/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  grafana:
+    <<: *restart
+    image: ${IMG_GRAFANA}
+    container_name: grafana
+    networks: [s4t]
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/horizon/metrics-live/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      INFLUXDB_ADMIN_USER: ${INFLUXDB_ADMIN_USER:-admin}
+      INFLUXDB_ADMIN_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD:-admin}
+    ports:
+      - "${BIND_PUBLIC:-0.0.0.0}:3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./patches/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./patches/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:3000/api/health | grep -q ok"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  metrics-gateway:
+    <<: *restart
+    build: ./docker/metrics-gateway
+    image: s4t-lab/metrics-gateway:local
+    container_name: metrics-gateway
+    hostname: metrics-gateway
+    networks: [s4t]
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    environment:
+      METRICS_HOST: "0.0.0.0"
+      METRICS_PORT: "8093"
+      INFLUX_URL: "http://influxdb:8086"
+      INFLUX_DB: "s4t_iot"
+      INFLUX_USER: ${INFLUXDB_ADMIN_USER:-admin}
+      INFLUX_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD:-admin}
+      REGISTRY_PATH: "/data/metrics_streams.json"
+      METRICS_WRITE_URL: "http://metrics-gateway:8093/v1/metrics/write"
+    ports:
+      - "${BIND_INTERNAL:-127.0.0.1}:8093:8093"
+    volumes:
+      - ./experiments/metrics/metrics_server.py:/app/metrics_server.py:ro
+      - ./experiments/metrics/registry.py:/app/registry.py:ro
+      - metrics_streams:/data
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8093/health', timeout=4)"]
+      interval: 15s
+      timeout: 6s
+      retries: 6
+      start_period: 15s
+
+  # ---------------------------------------------------------------- federated learning (Module G)
+  fl-control:
+    <<: *restart
+    build: ./docker/fl-control
+    image: s4t-lab/fl-control:local
+    container_name: fl-control
+    networks: [s4t]
+    working_dir: /lab/experiments/federated-learning
+    environment:
+      FL_CONTROL_HOST: "0.0.0.0"
+      FL_CONTROL_PORT: "8091"
+      FL_PYTHON: "python3"
+    ports:
+      - "${BIND_INTERNAL:-127.0.0.1}:8090:8090"
+      - "${BIND_INTERNAL:-127.0.0.1}:8091:8091"
+    volumes:
+      - .:/lab:rw
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8091/api/fl/status', timeout=4)"]
+      interval: 15s
+      timeout: 6s
+      retries: 6
+      start_period: 20s
+
+  # ---------------------------------------------------------------- lab helper: LR logs + dynamic boards
+  # Needs the Docker socket (starts/stops Lightning-Rod containers for the Fleet panel): keep it private.
+  lr-log-proxy:
+    <<: *restart
+    build: ./docker/lr-log-proxy
+    image: s4t-lab/lr-log-proxy:local
+    container_name: lr-log-proxy
+    networks: [s4t]
+    environment:
+      LR_LOG_PROXY_HOST: "0.0.0.0"
+      LR_LOG_PROXY_PORT: "8092"
+      DOCKER_BIN: "docker"
+      # Host paths: the Docker daemon runs on the host, not in this container.
+      TRAINING_ROOT: "${REPO_ROOT}"
+      LR_LAB_DIR: "${REPO_ROOT}/entrypoints"
+      LR_METRICS_HOST: "${REPO_ROOT}/experiments/metrics/s4t_metrics.py"
+      LR_OPT_FL_HOST: "${REPO_ROOT}/experiments/federated-learning/opt-fl"
+      LR_FL_PYTHON_VOL: "${COMPOSE_PROJECT_NAME:-s4t}_lr_fl_python"
+      LR_NETWORK: "${COMPOSE_PROJECT_NAME:-s4t}_s4t"
+      LR_VOLUME_PREFIX: "${COMPOSE_PROJECT_NAME:-s4t}_lr"
+      LR_IMAGE: "${IMG_LR}"
+    ports:
+      - "${BIND_INTERNAL:-127.0.0.1}:8092:8092"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./experiments/multiboard/lr_log_proxy.py:/app/lr_log_proxy.py:ro
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8092/provision/status', timeout=4)"]
+      interval: 15s
+      timeout: 6s
+      retries: 6
+      start_period: 10s
+
+networks:
+  s4t:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${S4T_SUBNET:-10.250.0.0/24}
+          gateway: ${S4T_GATEWAY:-10.250.0.1}
+
+volumes:
+  iotronic_ssl:
+  crossbar_data:
+  unime_iotronic_db_data:
+  rabbitmq_data:
+  iotronic_logs:
+  iotronic-ui_logs:
+  keystone_fernet:
+  keystone_credentials:
+  keystone_logs:
+  keystone_apache_logs:
+  lr_var:
+  lr_le:
+  lr_nginx:
+  lr_confs:
+  lr_data:
+  lr_fl_python:
+  lr2_var:
+  lr2_le:
+  lr2_nginx:
+  lr2_confs:
+  lr2_data:
+  lr3_var:
+  lr3_le:
+  lr3_nginx:
+  lr3_confs:
+  lr3_data:
+  lr4_var:
+  lr4_le:
+  lr4_nginx:
+  lr4_confs:
+  lr4_data:
+  lr5_var:
+  lr5_le:
+  lr5_nginx:
+  lr5_confs:
+  lr5_data:
+  lr6_var:
+  lr6_le:
+  lr6_nginx:
+  lr6_confs:
+  lr6_data:
+  influxdb_data:
+  grafana_data:
+  metrics_streams:

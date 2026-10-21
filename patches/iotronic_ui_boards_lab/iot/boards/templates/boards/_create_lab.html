@@ -1,0 +1,16 @@
+{% extends "horizon/common/_modal_form.html" %}
+{% load i18n %}
+
+{% block modal-body-right %}
+  <h3>{% trans "Description:" %}</h3>
+  <p>
+    {% blocktrans %}
+    Creates a virtual IoTronic board and starts a new Lightning-Rod container
+    with dedicated Docker volumes and a free host port (from 1480).
+    The LR is registered automatically on Crossbar (WAMP).
+    {% endblocktrans %}
+  </p>
+  <p class="help-block">
+    {% trans "Existing boards and containers are left untouched. LR UI login: me / arancino." %}
+  </p>
+{% endblock %}

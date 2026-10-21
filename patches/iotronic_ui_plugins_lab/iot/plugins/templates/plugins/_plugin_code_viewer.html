@@ -1,0 +1,176 @@
+{% load i18n %}
+{% with cm="/horizon/static/plugin_ide/codemirror/5.65.16" %}
+
+<link rel="stylesheet" href="{{ cm }}/codemirror.min.css">
+<link rel="stylesheet" href="{{ cm }}/addon/fold/foldgutter.min.css">
+<link rel="stylesheet" href="{{ cm }}/theme/material-darker.min.css">
+
+<div class="plugin-code-viewer" id="plugin-code-viewer">
+  <div class="plugin-code-viewer-toolbar">
+    <span class="plugin-code-viewer-label">{% trans "Python source" %}</span>
+    <div class="btn-group btn-group-xs pull-right">
+      <button type="button" class="btn btn-default" id="plugin-code-viewer-wrap" title="{% trans 'Word wrap' %}">
+        <span class="fa fa-text-width"></span>
+      </button>
+    </div>
+  </div>
+  <div class="plugin-code-viewer-shell">
+    <textarea id="plugin-code-viewer-source" class="plugin-code-viewer-source" readonly>{{ plugin_code }}</textarea>
+  </div>
+  <div class="plugin-code-viewer-statusbar">
+    <span id="plugin-code-viewer-cursor">Ln 1, Col 1</span>
+    <span class="plugin-code-viewer-sep">|</span>
+    <span id="plugin-code-viewer-lines">0 lines</span>
+    <span class="plugin-code-viewer-mode text-muted">{% trans "Read-only" %}</span>
+  </div>
+</div>
+
+<script src="{{ cm }}/codemirror.min.js"></script>
+<script src="{{ cm }}/mode/python/python.min.js"></script>
+<script src="{{ cm }}/addon/fold/foldcode.min.js"></script>
+<script src="{{ cm }}/addon/fold/foldgutter.min.js"></script>
+<script src="{{ cm }}/addon/fold/indent-fold.min.js"></script>
+<script src="{{ cm }}/addon/selection/active-line.min.js"></script>
+<script>
+(function() {
+  var root = document.getElementById('plugin-code-viewer');
+  if (!root) return;
+  var ta = root.querySelector('#plugin-code-viewer-source');
+  if (!ta || !window.CodeMirror) return;
+
+  var TRAILING_LINES = 5;
+  var FALLBACK_LINE_HEIGHT = 18;
+
+  var editor = CodeMirror.fromTextArea(ta, {
+    mode: 'python',
+    theme: 'material-darker',
+    readOnly: true,
+    lineNumbers: true,
+    lineWrapping: true,
+    styleActiveLine: true,
+    foldGutter: true,
+    viewportMargin: Infinity,
+    gutters: ['CodeMirror-linenumbers', 'CodeMirror-foldgutter']
+  });
+
+  function lineHeightPx() {
+    var lh = editor.defaultTextHeight();
+    if (lh && lh >= 8) return lh;
+    var sample = editor.getWrapperElement().querySelector('.CodeMirror-line');
+    if (sample && sample.offsetHeight >= 8) return sample.offsetHeight;
+    return FALLBACK_LINE_HEIGHT;
+  }
+
+  function measureDocHeight() {
+    editor.refresh();
+    var sizer = editor.getWrapperElement().querySelector('.CodeMirror-sizer');
+    if (sizer && sizer.offsetHeight > 0) {
+      return sizer.offsetHeight;
+    }
+    if (editor.heightAtLine) {
+      var atEnd = editor.heightAtLine(editor.lineCount(), 'local');
+      if (atEnd > 0) return atEnd;
+    }
+    return editor.lineCount() * lineHeightPx();
+  }
+
+  function fitEditorHeight() {
+    var lineHeight = lineHeightPx();
+    var docHeight = measureDocHeight();
+    var height = docHeight + (lineHeight * TRAILING_LINES) + 4;
+    editor.setSize('100%', height);
+    editor.refresh();
+    var docHeight2 = measureDocHeight();
+    if (Math.abs(docHeight2 - docHeight) > 1) {
+      editor.setSize('100%', docHeight2 + (lineHeight * TRAILING_LINES) + 4);
+    }
+  }
+
+  function updateStatus() {
+    var cur = editor.getCursor();
+    var cursorEl = root.querySelector('#plugin-code-viewer-cursor');
+    var linesEl = root.querySelector('#plugin-code-viewer-lines');
+    if (cursorEl) cursorEl.textContent = 'Ln ' + (cur.line + 1) + ', Col ' + (cur.ch + 1);
+    if (linesEl) linesEl.textContent = editor.lineCount() + ' lines';
+  }
+
+  editor.on('cursorActivity', updateStatus);
+  updateStatus();
+
+  [0, 50, 250, 800].forEach(function(delay) {
+    setTimeout(fitEditorHeight, delay);
+  });
+
+  var resizeTimer;
+  window.addEventListener('resize', function() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(fitEditorHeight, 120);
+  });
+
+  var wrapBtn = root.querySelector('#plugin-code-viewer-wrap');
+  if (wrapBtn) {
+    wrapBtn.addEventListener('click', function() {
+      editor.setOption('lineWrapping', !editor.getOption('lineWrapping'));
+      setTimeout(fitEditorHeight, 0);
+      setTimeout(fitEditorHeight, 100);
+    });
+  }
+})();
+</script>
+
+<style>
+  .plugin-code-viewer {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    overflow: visible;
+    margin-top: 6px;
+    width: 100%;
+  }
+  .plugin-code-viewer-toolbar {
+    display: flex;
+    align-items: center;
+    padding: 6px 10px;
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+  }
+  .plugin-code-viewer-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+  }
+  .plugin-code-viewer-shell {
+    overflow: visible;
+  }
+  .plugin-code-viewer-shell .CodeMirror {
+    font-family: "DejaVu Sans Mono", "Consolas", "Monaco", monospace;
+    font-size: 13px;
+    height: auto;
+  }
+  .plugin-code-viewer-shell .CodeMirror-scroll {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  .plugin-code-viewer-shell .CodeMirror-sizer {
+    min-height: auto !important;
+  }
+  .plugin-code-viewer-source {
+    display: none;
+    width: 100%;
+  }
+  .plugin-code-viewer-statusbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    background: #0b1220;
+    border-top: 1px solid #334155;
+    font-size: 11px;
+    color: #94a3b8;
+    font-family: monospace;
+  }
+  .plugin-code-viewer-mode { margin-left: auto; }
+</style>
+
+{% endwith %}

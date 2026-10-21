@@ -1,0 +1,111 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}{% trans "Web Services (WoT)" %}{% endblock %}
+
+{% block page_header %}
+  {% include "horizon/common/_page_header.html" with title=page_title %}
+{% endblock %}
+
+{% block main %}
+<div class="row">
+  <div class="col-sm-12">
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <h3 class="panel-title">{% trans "Web of Things — WSTUN tunnels" %}</h3>
+      </div>
+      <div class="panel-body">
+        {% if tunnels %}
+          <span class="label label-success">{{ tunnels|length }} {% trans "active tunnel(s)" %}</span>
+        {% else %}
+          <span class="label label-warning">{% trans "No tunnels active" %}</span>
+        {% endif %}
+
+        <form method="get" class="form-inline wot-filter-bar">
+          <div class="form-group">
+            <label for="wot_thing_select">{% trans "Exposed service" %}</label>
+            <select name="thing" id="wot_thing_select" class="form-control input-sm wot-thing-select">
+              {% for tunnel in tunnels %}
+                <option value="{{ tunnel.stream_key }}"
+                        {% if tunnel.stream_key == selected_stream_key %}selected{% endif %}>
+                  {{ tunnel.board_name }} / {{ tunnel.service_name }} :{{ tunnel.local_port }} -&gt; {{ tunnel.public_port }}
+                </option>
+              {% empty %}
+                <option value="">{% trans "No tunnels — enable a service on a board first" %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm" {% if not tunnels %}disabled{% endif %}>
+            {% trans "Show" %}
+          </button>
+          {% if thing_url %}
+            <a class="btn btn-default btn-sm" href="{{ thing_url }}" target="_blank" rel="noopener">
+              {% trans "Open in new tab" %}
+            </a>
+          {% endif %}
+        </form>
+
+        {% if tunnels %}
+        <table class="table table-condensed table-striped wot-tunnel-table">
+          <thead>
+            <tr>
+              <th>{% trans "Board" %}</th>
+              <th>{% trans "Service" %}</th>
+              <th>{% trans "Mapping" %}</th>
+              <th>{% trans "Public URL" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tunnel in tunnels %}
+            <tr{% if tunnel.stream_key == selected_stream_key %} class="info"{% endif %}>
+              <td>{{ tunnel.board_name }}</td>
+              <td><code>{{ tunnel.service_name }}</code></td>
+              <td>{{ tunnel.local_port }} &rarr; {{ tunnel.public_port }}</td>
+              <td><a href="{{ tunnel.public_url }}" target="_blank" rel="noopener">{{ tunnel.public_url }}</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if selected_thing %}
+<div class="row">
+  <div class="col-sm-12">
+    <div class="panel panel-default wot-embed-panel">
+      <div class="panel-heading">
+        <h3 class="panel-title">{% trans "Thing web UI" %} — {{ selected_thing.service_name }}</h3>
+      </div>
+      <div class="panel-body wot-embed-body">
+        <iframe id="wot-embed-frame"
+                src="{{ thing_url }}"
+                title="{% trans 'Remote thing dashboard' %}"
+                frameborder="0"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<style>
+  .wot-filter-bar { margin: 12px 0; }
+  .wot-filter-bar .form-group { margin-right: 12px; }
+  .wot-thing-select { min-width: 420px; max-width: 100%; }
+  .wot-embed-body { padding: 0; background: #0b1220; }
+  #wot-embed-frame { width: 100%; min-height: 560px; border: 0; background: #fff; display: block; }
+</style>
+
+<script>
+(function () {
+  var sel = document.getElementById('wot_thing_select');
+  if (sel) {
+    sel.addEventListener('change', function () {
+      if (sel.value) sel.form.submit();
+    });
+  }
+})();
+</script>
+{% endblock %}

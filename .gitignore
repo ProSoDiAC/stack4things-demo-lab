@@ -1,0 +1,13 @@
+.env
+vm-ip.txt
+backups/
+*.log
+__pycache__/
+*.pyc
+.venv/
+# runtime state written by the demo scripts
+experiments/federated-learning/.run/
+experiments/webservices/*-state.json
+experiments/webservices/wot-fritzing/wot-fritzing-state.json
+lab-ops/.last-manual-lr.env
+docs/screenshots/

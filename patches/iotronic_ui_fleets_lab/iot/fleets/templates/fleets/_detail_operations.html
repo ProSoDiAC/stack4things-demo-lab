@@ -1,0 +1,33 @@
+{% load i18n %}
+
+<div class="detail">
+  <p class="text-muted">
+    {% trans "Each action runs on every member board of this fleet (same as IoT → Plugins, but pre-scoped to the fleet)." %}
+  </p>
+  {% if boards %}
+  <p><strong>{% trans "Targets:" %}</strong>
+    {% for board in boards %}{{ board.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+  </p>
+  <div class="btn-toolbar" role="toolbar">
+    <a href="{{ inject_url }}" class="btn btn-info ajax-modal">
+      <span class="fa fa-download"></span> {% trans "Inject plugin" %}
+    </a>
+    <a href="{{ start_url }}" class="btn btn-success ajax-modal">
+      <span class="fa fa-play"></span> {% trans "Start plugin" %}
+    </a>
+    <a href="{{ stop_url }}" class="btn btn-warning ajax-modal">
+      <span class="fa fa-stop"></span> {% trans "Stop plugin" %}
+    </a>
+    <a href="{{ call_url }}" class="btn btn-default ajax-modal">
+      <span class="fa fa-phone"></span> {% trans "Call plugin" %}
+    </a>
+    <a href="{{ remove_url }}" class="btn btn-danger ajax-modal">
+      <span class="fa fa-trash"></span> {% trans "Remove plugin" %}
+    </a>
+  </div>
+  {% else %}
+  <p class="text-warning">
+    {% trans "Add member boards on the Members tab before running fleet operations." %}
+  </p>
+  {% endif %}
+</div>
