@@ -49,6 +49,21 @@ Images are pinned. To move to newer upstream images, change the `IMG_*` digests 
 `./lab up && ./lab verify`. After editing patches in `patches/` or `entrypoints/`, recreate the affected container
 (`docker compose up -d --force-recreate iotronic-ui`) — they are bind mounts, not part of any image.
 
+## Migrating an existing deployment
+
+If you already run the upstream `ch13` compose (+ the old lab overlay) you can adopt this repository **on the same data**:
+
+1. `docker compose down` the old stack (no `-v`) and take a backup of the volumes.
+2. Set `COMPOSE_PROJECT_NAME=ch13` in `.env`, so the volume names (`ch13_lr_var`, …) match.
+3. Start only the database (`docker compose up -d --wait iotronic-db`) and make the agent identity stable:
+   `UPDATE wampagents SET hostname='iotronic-wagent' WHERE hostname='<old agent container id>';`
+   `UPDATE boards SET agent='iotronic-wagent' WHERE agent='<old agent container id>';`
+4. `./lab up`, then in every Lightning-Rod replace the old agent id in `/etc/iotronic/settings.json`
+   (`docker exec <lr> sed -i 's/<old id>/iotronic-wagent/g' /etc/iotronic/settings.json`) and restart the boards.
+5. `./lab bootstrap --only plugins fl verify` refreshes the plugin code and heals the demos.
+
+Keystone's Fernet keys are regenerated on the first start (tokens issued before are invalid; users log in again).
+
 ## Security
 
 The lab is a demo environment:

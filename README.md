@@ -13,8 +13,9 @@ idempotent and ordered by health checks).
 git clone https://github.com/ProSoDiAC/stack4things-demo-lab.git
 cd stack4things-demo-lab
 ./lab init <ip-or-hostname-users-will-use>   # optional, defaults to this machine's first IP
-./lab up          # builds the 3 small helper images, starts 20 containers, waits until healthy (~3 min)
-./lab bootstrap   # creates boards, plugins, metrics stream, web services, FL deps (~5 min the first time)
+./lab up          # pulls images (≈ 9 GB the first time), builds 3 small helper images, starts 20 containers,
+                  # waits until healthy (≈ 1 min once the images are cached)
+./lab bootstrap   # creates boards, plugins, metrics stream, web services, FL deps (≈ 3 min, downloads PyTorch)
 ./lab verify      # health report (self-heals what it can) -> "RESULT : READY"
 ```
 

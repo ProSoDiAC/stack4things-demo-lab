@@ -198,7 +198,6 @@ def step_fl(token: str) -> None:
     log("\n== federated learning (python deps on boards + client plugins) ==")
     run(["bash", "experiments/federated-learning/install-fl-on-boards.sh"], timeout=3600)
     run(["bash", "experiments/federated-learning/setup-fl-demo-plugins.sh"])
-    run(["docker", "restart", "fl-control"], check=False)
 
 
 def step_metrics(token: str) -> None:
